@@ -12,6 +12,8 @@ export async function connectDb(uri, dbName) {
     db.collection('weights').createIndex({ userId: 1, date: 1 }, { unique: true }),
     db.collection('assets').createIndex({ userId: 1, category: 1, name: 1 }),
     db.collection('simulations').createIndex({ userId: 1, updatedAt: -1 }),
+    db.collection('properties').createIndex({ userId: 1, updatedAt: -1 }),
+    db.collection('propertyTransactions').createIndex({ userId: 1, propertyId: 1, date: -1 }),
   ]);
   return client;
 }
@@ -21,3 +23,5 @@ export const entries = () => db.collection('entries');
 export const weights = () => db.collection('weights');
 export const assets = () => db.collection('assets');
 export const simulations = () => db.collection('simulations');
+export const properties = () => db.collection('properties');
+export const propertyTransactions = () => db.collection('propertyTransactions');

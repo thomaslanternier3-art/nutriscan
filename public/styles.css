@@ -232,6 +232,81 @@ textarea { resize: vertical; font: inherit; }
 .asset-actions > strong { margin-right: 4px; white-space: nowrap; }
 .asset-form textarea { margin-top: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--text); }
 
+/* Suivi immobilier par bien */
+.wealth-tabs { display: flex; gap: 4px; margin: 0 0 12px; padding: 3px; border-radius: 10px; background: var(--border); }
+.wealth-tabs button { flex: 1; min-height: 40px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+.wealth-tabs button.active { background: #fff; color: var(--text); font-weight: 600; }
+.property-form { margin-top: 12px; }
+.property-card { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; margin: 8px 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--text); text-align: left; cursor: pointer; }
+.property-card > span:first-child { min-width: 0; }
+.property-card strong, .property-card small { display: block; }
+.property-card small { margin-top: 4px; color: var(--muted); overflow-wrap: anywhere; }
+.property-card-value { flex: 0 0 auto; text-align: right; font-weight: 700; }
+.property-card-value small { font-size: .72rem; font-weight: 400; }
+.empty-properties { padding: 12px 4px; }
+.property-detail-head { display: grid; gap: 8px; margin: 14px 0; }
+.property-detail-head > .btn { justify-self: start; }
+.property-detail-head .row { margin: 0; }
+.btn.danger { border-color: #fecaca; color: var(--red); }
+.property-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--border); background: var(--border); }
+.property-summary > div { display: grid; align-content: start; gap: 6px; min-height: 78px; padding: 11px; background: #fff; }
+.property-summary > .property-summary-name { grid-column: 1 / -1; min-height: auto; }
+.property-summary span { color: var(--muted); font-size: .78rem; }
+.property-summary strong { overflow-wrap: anywhere; font-size: .95rem; }
+.property-summary > p { grid-column: 1 / -1; margin: 0; padding: 10px; background: #fff; color: var(--muted); font-size: .85rem; }
+.property-section { margin-top: 26px; }
+.property-section h3 { margin: 0; font-size: 1.05rem; }
+.year-select { max-width: 220px; margin-top: 10px; }
+.property-profit-chart { overflow-x: auto; margin-top: 8px; }
+.property-month-chart { display: grid; grid-template-columns: repeat(12, minmax(34px, 1fr)); gap: 6px; min-width: 430px; height: 170px; padding: 8px 0 0; border-bottom: 1px solid var(--border); }
+.property-month { display: grid; grid-template-rows: 1fr 18px; text-align: center; }
+.property-month-bars { display: flex; align-items: end; justify-content: center; gap: 3px; height: 100%; background: linear-gradient(to bottom, transparent 49.5%, var(--border) 49.5%, var(--border) 50%, transparent 50%); }
+.property-month-bars i { width: 9px; min-height: 2px; border-radius: 3px 3px 0 0; }
+.property-month-bars .income, .legend-dot.income { background: #16a34a; }
+.property-month-bars .expense, .legend-dot.expense { background: #dc2626; }
+.property-month small { color: var(--muted); font-size: .7rem; }
+.property-year-totals { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; font-size: .82rem; }
+.property-year-totals span { display: flex; align-items: center; gap: 5px; }
+.legend-dot { width: 8px; height: 8px; display: inline-block; border-radius: 50%; }
+.section-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.section-heading > div { min-width: 0; }
+.section-heading .btn { flex: 0 0 auto; }
+.section-heading .muted { margin: 3px 0 0; }
+.transaction-form { margin-top: 10px; }
+.transaction-form h4 { margin: 0 0 10px; }
+.transaction-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.transaction-row > div:first-child { min-width: 0; }
+.transaction-row strong, .transaction-row small { display: block; }
+.transaction-row small { margin-top: 3px; color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
+.transaction-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.transaction-actions > strong { white-space: nowrap; }
+.tax-section { padding-top: 18px; border-top: 1px solid var(--border); }
+.tax-report-rows { margin-top: 12px; border-top: 1px solid var(--border); }
+.tax-perimeter { margin: 10px 0; color: var(--muted); font-size: .82rem; line-height: 1.45; }
+.tax-box-row { display: grid; grid-template-columns: minmax(105px, .7fr) 2fr auto; align-items: start; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: .86rem; }
+.tax-box-row > strong { color: #14532d; }
+.tax-box-row span small { display: block; margin-top: 3px; color: var(--muted); font-size: .76rem; }
+.tax-box-row b { text-align: right; white-space: nowrap; }
+.tax-breakdown { padding: 12px; background: #f3f4f6; font-size: .84rem; }
+.tax-breakdown p { margin: 7px 0 0; }
+.tax-warning { margin: 12px 0; padding: 11px; border-left: 3px solid #d97706; background: #fffbeb; font-size: .82rem; line-height: 1.5; }
+.tax-sources { font-size: .8rem; }
+#property-monthly-breakdown table { min-width: 540px; font-size: .78rem; }
+#property-monthly-breakdown th, #property-monthly-breakdown td { padding: 8px; }
+#tax-print-report { display: none; }
+
+@media print {
+  body.tax-printing > * { display: none !important; }
+  body.tax-printing > #tax-print-report { display: block !important; position: absolute; inset: 0; padding: 12mm; color: #111; background: #fff; font: 10pt/1.4 Arial, sans-serif; }
+  #tax-print-report h1 { font-size: 18pt; }
+  #tax-print-report h2 { margin-top: 24px; font-size: 14pt; }
+  #tax-print-report .tax-box-row { grid-template-columns: 28mm 1fr 35mm; }
+  #tax-print-report .tax-warning { background: #fff; }
+  #tax-print-report table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+  #tax-print-report th, #tax-print-report td { padding: 5px; border: 1px solid #aaa; text-align: left; }
+  #tax-print-report a { color: #111; }
+}
+
 /* Simulation immobilière */
 .simulation-intro { padding: 16px 4px 12px; }
 .simulation-intro .eyebrow { margin: 0 0 6px; color: var(--green); font-size: .75rem; font-weight: 700; }

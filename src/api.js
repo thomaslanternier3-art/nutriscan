@@ -2,13 +2,20 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { ObjectId } from 'mongodb';
 import { requireAuth } from './auth.js';
-import { users, entries, weights, assets, simulations } from './db.js';
+import { users, entries, weights, assets, simulations, properties, propertyTransactions } from './db.js';
 
 const MEALS = ['breakfast', 'lunch', 'snack', 'dinner'];
 const ACTIVITY = [1.2, 1.375, 1.55, 1.725, 1.9];
 const DEFICITS = [250, 500, 750];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ASSET_CATEGORIES = new Set(['real_estate', 'stocks', 'bank', 'crypto', 'vehicles', 'valuables', 'other']);
+const PROPERTY_TYPES = new Set(['unfurnished', 'furnished_long', 'tourism_classified', 'tourism_unclassified']);
+const PROPERTY_REGIMES = new Set(['micro', 'real']);
+const LANDLORD_STATUSES = new Set(['non_professional', 'professional']);
+const PROPERTY_TRANSACTION_CATEGORIES = new Set([
+  'rent', 'other_income', 'recovered_charges', 'property_tax', 'coproperty', 'insurance', 'management', 'repairs',
+  'major_works', 'loan_interest', 'accounting', 'cfe', 'acquisition_fees', 'utilities', 'loan_principal', 'other_expense',
+]);
 const SIMULATION_LIMITS = {
   purchasePrice: [1, 100_000_000], notaryRate: [0, 20], agencyRate: [0, 20], works: [0, 100_000_000],
   furnishing: [0, 10_000_000], acquisitionOther: [0, 10_000_000], rentMonthly: [0, 1_000_000],
@@ -63,11 +70,136 @@ function parseSimulation(body) {
   return { simulation: { name, inputs } };
 }
 
+function parseProperty(body) {
+  const values = body ?? {};
+  const name = text(values.name, 120);
+  if (!name) return { error: 'Le nom du bien est requis' };
+  if (!PROPERTY_TYPES.has(values.type)) return { error: 'Type de location invalide' };
+  if (!PROPERTY_REGIMES.has(values.taxRegime)) return { error: 'Régime fiscal invalide' };
+  if (!LANDLORD_STATUSES.has(values.landlordStatus)) return { error: 'Statut de loueur invalide' };
+  if (!isNum(values.ownershipShare, 0.01, 100)) return { error: 'Part détenue invalide' };
+  if (values.acquisitionDate && !isDate(values.acquisitionDate)) return { error: 'Date d’acquisition invalide' };
+  if (!isNum(values.purchasePrice, 0, 100_000_000)) return { error: 'Prix d’achat invalide' };
+  if (!isNum(values.currentValue, 0, 100_000_000)) return { error: 'Valeur actuelle invalide' };
+  if (!isNum(values.monthlyRent, 0, 100_000)) return { error: 'Loyer mensuel invalide' };
+  return { property: {
+    name,
+    address: text(values.address, 200),
+    type: values.type,
+    taxRegime: values.taxRegime,
+    landlordStatus: values.landlordStatus,
+    ownershipShare: values.ownershipShare,
+    acquisitionDate: values.acquisitionDate || '',
+    purchasePrice: values.purchasePrice,
+    currentValue: values.currentValue,
+    monthlyRent: values.monthlyRent,
+    notes: text(values.notes, 500),
+  } };
+}
+
+function toPropertyDto({ _id, userId, ...rest }) {
+  return { id: _id.toString(), ...rest };
+}
+
+function toPropertyTransactionDto({ _id, userId, propertyId, ...rest }) {
+  return { id: _id.toString(), ...rest };
+}
+
+async function findOwnedProperty(req, res) {
+  if (!ObjectId.isValid(req.params.id)) {
+    res.status(400).json({ error: 'Identifiant de bien invalide' });
+    return null;
+  }
+  const property = await properties().findOne({ _id: new ObjectId(req.params.id), userId: req.userId });
+  if (!property) res.status(404).json({ error: 'Bien immobilier introuvable' });
+  return property;
+}
+
 export const apiRouter = Router();
 
 apiRouter.get('/health', (req, res) => res.json({ ok: true }));
 
 apiRouter.use(requireAuth);
+
+/* ---------- Biens immobiliers ---------- */
+
+apiRouter.get('/properties', async (req, res) => {
+  const list = await properties().find({ userId: req.userId }).sort({ updatedAt: -1 }).limit(500).toArray();
+  res.json(list.map(toPropertyDto));
+});
+
+apiRouter.post('/properties', async (req, res) => {
+  const parsed = parseProperty(req.body);
+  if (parsed.error) return badRequest(res, parsed.error);
+  const property = { ...parsed.property, userId: req.userId, createdAt: new Date(), updatedAt: new Date() };
+  const { insertedId } = await properties().insertOne(property);
+  res.status(201).json(toPropertyDto({ _id: insertedId, ...property }));
+});
+
+apiRouter.put('/properties/:id', async (req, res) => {
+  const existing = await findOwnedProperty(req, res);
+  if (!existing) return;
+  const parsed = parseProperty(req.body);
+  if (parsed.error) return badRequest(res, parsed.error);
+  await properties().updateOne({ _id: existing._id, userId: req.userId }, { $set: { ...parsed.property, updatedAt: new Date() } });
+  res.json({ id: existing._id.toString(), ...parsed.property });
+});
+
+apiRouter.delete('/properties/:id', async (req, res) => {
+  const existing = await findOwnedProperty(req, res);
+  if (!existing) return;
+  await Promise.all([
+    properties().deleteOne({ _id: existing._id, userId: req.userId }),
+    propertyTransactions().deleteMany({ propertyId: existing._id, userId: req.userId }),
+  ]);
+  res.status(204).end();
+});
+
+apiRouter.get('/properties/:id/transactions', async (req, res) => {
+  const existing = await findOwnedProperty(req, res);
+  if (!existing) return;
+  const year = String(req.query.year || '');
+  const dateFilter = /^\d{4}$/.test(year)
+    ? { $gte: `${year}-01-01`, $lte: `${year}-12-31` }
+    : undefined;
+  const filter = { propertyId: existing._id, userId: req.userId };
+  if (dateFilter) filter.date = dateFilter;
+  const list = await propertyTransactions().find(filter).sort({ date: -1, createdAt: -1 }).limit(5000).toArray();
+  res.json(list.map(toPropertyTransactionDto));
+});
+
+apiRouter.post('/properties/:id/transactions', async (req, res) => {
+  const existing = await findOwnedProperty(req, res);
+  if (!existing) return;
+  const body = req.body ?? {};
+  const category = body.category;
+  if (!isDate(body.date)) return badRequest(res, 'Date du mouvement invalide');
+  if (!PROPERTY_TRANSACTION_CATEGORIES.has(category)) return badRequest(res, 'Nature du mouvement invalide');
+  if (!isNum(body.amount, 0.01, 10_000_000)) return badRequest(res, 'Montant invalide');
+  const transaction = {
+    userId: req.userId,
+    propertyId: existing._id,
+    date: body.date,
+    category,
+    type: ['rent', 'other_income', 'recovered_charges'].includes(category) ? 'income' : 'expense',
+    amount: body.amount,
+    description: text(body.description, 160),
+    createdAt: new Date(),
+  };
+  const { insertedId } = await propertyTransactions().insertOne(transaction);
+  res.status(201).json(toPropertyTransactionDto({ _id: insertedId, ...transaction }));
+});
+
+apiRouter.delete('/properties/:id/transactions/:transactionId', async (req, res) => {
+  const existing = await findOwnedProperty(req, res);
+  if (!existing) return;
+  if (!ObjectId.isValid(req.params.transactionId)) return badRequest(res, 'Identifiant de mouvement invalide');
+  const { deletedCount } = await propertyTransactions().deleteOne({
+    _id: new ObjectId(req.params.transactionId), propertyId: existing._id, userId: req.userId,
+  });
+  if (!deletedCount) return res.status(404).json({ error: 'Mouvement introuvable' });
+  res.status(204).end();
+});
 
 /* ---------- Simulations immobilières ---------- */
 

@@ -166,6 +166,12 @@
 
     <!-- Module Patrimoine -->
     <section id="view-patrimoine" class="view">
+      <div class="wealth-tabs" role="tablist" aria-label="Patrimoine">
+        <button class="active" type="button" role="tab" aria-selected="true" data-wealth-tab="overview">Vue globale</button>
+        <button type="button" role="tab" aria-selected="false" data-wealth-tab="realestate">Immobilier</button>
+      </div>
+
+      <div id="wealth-overview-panel">
       <div class="wealth-intro">
         <p class="eyebrow">PATRIMOINE</p>
         <h2>Vue d’ensemble</h2>
@@ -210,6 +216,124 @@
         <h2>Mes actifs</h2>
         <div id="wealth-assets"></div>
       </section>
+      </div>
+
+      <div id="wealth-realestate-panel" hidden>
+        <div class="wealth-intro">
+          <p class="eyebrow">PATRIMOINE IMMOBILIER</p>
+          <h2>Mes biens</h2>
+          <p class="muted">Suivez les loyers, charges, résultats et justificatifs de chaque logement.</p>
+        </div>
+        <button id="property-add" class="btn primary add-asset" type="button">+ Ajouter un bien</button>
+        <p id="property-msg" class="msg" aria-live="polite"></p>
+        <div id="property-list"></div>
+
+        <form id="property-form" class="card property-form" hidden>
+          <h2 id="property-form-title">Nouveau bien immobilier</h2>
+          <label>Nom du bien<input id="property-name" maxlength="120" placeholder="Ex. Appartement Lyon" required></label>
+          <label>Adresse<input id="property-address" maxlength="200" autocomplete="street-address"></label>
+          <div class="grid2">
+            <label>Type de location
+              <select id="property-type" required>
+                <option value="unfurnished">Location nue</option>
+                <option value="furnished_long">Location meublée longue durée</option>
+                <option value="tourism_classified">Meublé de tourisme classé</option>
+                <option value="tourism_unclassified">Meublé de tourisme non classé</option>
+              </select>
+            </label>
+            <label>Régime fiscal
+              <select id="property-regime" required>
+                <option value="micro">Micro</option>
+                <option value="real">Réel</option>
+              </select>
+            </label>
+            <label>Statut en location meublée
+              <select id="property-landlord-status">
+                <option value="non_professional">Non professionnel (LMNP)</option>
+                <option value="professional">Professionnel (LMP)</option>
+              </select>
+            </label>
+            <label>Part détenue (%)<input id="property-share" type="number" min="0.01" max="100" step="0.01" value="100" required></label>
+            <label>Date d’acquisition<input id="property-acquired" type="date"></label>
+            <label>Prix d’achat (€)<input id="property-purchase" type="number" min="0" max="100000000" step="1000" value="0" required></label>
+            <label>Valeur actuelle estimée (€)<input id="property-value" type="number" min="0" max="100000000" step="1000" value="0" required></label>
+            <label>Loyer mensuel hors charges (€)<input id="property-rent" type="number" min="0" max="100000" step="10" value="0" required></label>
+          </div>
+          <label>Notes<input id="property-notes" maxlength="500"></label>
+          <div class="row">
+            <button id="property-save" class="btn primary" type="submit">Enregistrer</button>
+            <button id="property-cancel" class="btn" type="button">Annuler</button>
+          </div>
+        </form>
+
+        <section id="property-detail" hidden>
+          <div class="property-detail-head">
+            <button id="property-back" class="btn" type="button">&#8592; Tous les biens</button>
+            <div class="row">
+              <button id="property-edit" class="btn" type="button">Modifier</button>
+              <button id="property-delete" class="btn danger" type="button">Supprimer</button>
+            </div>
+          </div>
+          <div id="property-summary" class="property-summary"></div>
+
+          <section class="property-section">
+            <h3>Rentabilité au fil du temps</h3>
+            <label class="year-select">Année d’analyse<select id="property-chart-year"></select></label>
+            <div id="property-profit-chart" class="property-profit-chart"></div>
+            <div id="property-monthly-breakdown" class="table-scroll"></div>
+            <div id="property-year-totals" class="property-year-totals"></div>
+          </section>
+
+          <section class="property-section">
+            <div class="section-heading">
+              <h3>Journal des recettes et dépenses</h3>
+              <button id="transaction-add" class="btn primary" type="button">+ Ajouter</button>
+            </div>
+            <form id="transaction-form" class="card transaction-form" hidden>
+              <h4 id="transaction-form-title">Nouveau mouvement</h4>
+              <div class="grid2">
+                <label>Date<input id="transaction-date" type="date" required></label>
+                <label>Nature
+                  <select id="transaction-category" required>
+                    <option value="rent">Loyer encaissé</option>
+                    <option value="other_income">Autre recette / indemnité</option>
+                    <option value="recovered_charges">Charges récupérées / provisions</option>
+                    <option value="property_tax">Taxe foncière</option>
+                    <option value="coproperty">Copropriété non récupérable</option>
+                    <option value="insurance">Assurance propriétaire</option>
+                    <option value="management">Gestion / administration</option>
+                    <option value="repairs">Travaux / réparations</option>
+                    <option value="major_works">Gros travaux / amélioration à vérifier</option>
+                    <option value="loan_interest">Intérêts d’emprunt</option>
+                    <option value="accounting">Comptabilité / frais divers</option>
+                    <option value="cfe">CFE</option>
+                    <option value="acquisition_fees">Frais d’acquisition</option>
+                    <option value="utilities">Énergie / fluides à charge</option>
+                    <option value="loan_principal">Remboursement du capital (non déductible)</option>
+                    <option value="other_expense">Autre dépense</option>
+                  </select>
+                </label>
+                <label>Montant (€)<input id="transaction-amount" type="number" min="0.01" max="10000000" step="0.01" required></label>
+                <label>Description<input id="transaction-description" maxlength="160" placeholder="Facultatif"></label>
+              </div>
+              <div class="row">
+                <button id="transaction-save" class="btn primary" type="submit">Enregistrer</button>
+                <button id="transaction-cancel" class="btn" type="button">Annuler</button>
+              </div>
+            </form>
+            <div id="property-transactions"></div>
+          </section>
+
+          <section class="property-section tax-section">
+            <div class="section-heading">
+              <div><h3>Rapport fiscal annuel</h3><p class="muted">Synthèse préparatoire à partir du journal saisi.</p></div>
+              <button id="tax-print" class="btn" type="button">&#128438; Imprimer</button>
+            </div>
+            <label class="year-select">Année des revenus<select id="tax-year"></select></label>
+            <div id="tax-report"></div>
+          </section>
+        </section>
+      </div>
     </section>
 
     <!-- Module Simulation immobilière -->
@@ -378,6 +502,7 @@
   </main>
 
   <nav class="bottom-nav" aria-label="Navigation principale" hidden></nav>
+  <div id="tax-print-report" hidden></div>
 
   <script src="app.js"></script>
 </body>

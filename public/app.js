@@ -14,6 +14,32 @@ const ASSET_CATEGORIES = {
   valuables: 'Biens de valeur',
   other: 'Autres',
 };
+const PROPERTY_TYPES = {
+  unfurnished: 'Location nue',
+  furnished_long: 'Location meublée longue durée',
+  tourism_classified: 'Meublé de tourisme classé',
+  tourism_unclassified: 'Meublé de tourisme non classé',
+};
+const PROPERTY_TRANSACTION_LABELS = {
+  rent: 'Loyer encaissé',
+  other_income: 'Autre recette / indemnité',
+  recovered_charges: 'Charges récupérées / provisions',
+  property_tax: 'Taxe foncière',
+  coproperty: 'Copropriété non récupérable',
+  insurance: 'Assurance propriétaire',
+  management: 'Gestion / administration',
+  repairs: 'Travaux / réparations',
+  major_works: 'Gros travaux / amélioration',
+  loan_interest: 'Intérêts d’emprunt',
+  accounting: 'Comptabilité / frais divers',
+  cfe: 'CFE',
+  acquisition_fees: 'Frais d’acquisition',
+  utilities: 'Énergie / fluides à charge',
+  loan_principal: 'Remboursement du capital',
+  other_expense: 'Autre charge à vérifier',
+};
+const PROPERTY_INCOME = new Set(['rent', 'other_income', 'recovered_charges']);
+const PROPERTY_DEDUCTIBLE = new Set(['property_tax', 'coproperty', 'insurance', 'management', 'repairs', 'loan_interest', 'accounting', 'utilities']);
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 const compactEuro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', notation: 'compact', maximumFractionDigits: 1 });
 const SIMULATION_FIELDS = [
@@ -51,7 +77,10 @@ const fromISO = (s) => { const [y, m, d] = s.split('-').map(Number); return new 
 const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
 const weekStart = (iso) => { const d = fromISO(iso); return addDays(d, -((d.getDay() + 6) % 7)); };
 
-const state = { date: toISO(new Date()), mode: 'day', profile: null, entries: [], assets: [] };
+const state = {
+  date: toISO(new Date()), mode: 'day', profile: null, entries: [], assets: [], properties: [],
+  wealthTab: 'overview', activePropertyId: '', propertyTransactions: [],
+};
 let renderToken = 0;
 let wealthRenderToken = 0;
 
@@ -149,28 +178,48 @@ function showView(name) {
   if (name !== 'scan') stopScanner();
   if (name === 'nutriscan') renderDashboard();
   if (name === 'profile') renderProfile();
-  if (name === 'patrimoine') renderPatrimoine();
+  if (name === 'patrimoine') {
+    renderPatrimoine();
+    if (state.wealthTab === 'realestate') loadProperties(state.activePropertyId);
+  }
   if (name === 'simulation') enterSimulation();
 }
 
 async function renderPatrimoine() {
   const token = ++wealthRenderToken;
   try {
-    state.assets = await api('/assets');
+    [state.assets, state.properties] = await Promise.all([api('/assets'), api('/properties')]);
   } catch (err) {
     $('#wealth-categories').innerHTML = `<p class="msg error">${esc(err.message)}</p>`;
     $('#wealth-assets').innerHTML = '';
     return;
   }
   if (token !== wealthRenderToken) return;
+  $('#wealth-overview-panel').hidden = state.wealthTab !== 'overview';
+  $('#wealth-realestate-panel').hidden = state.wealthTab !== 'realestate';
+  $$('[data-wealth-tab]').forEach((button) => {
+    const active = button.dataset.wealthTab === state.wealthTab;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
 
-  const total = state.assets.reduce((sum, asset) => sum + asset.value, 0);
+  const propertyAssets = state.properties.map((property) => ({
+    id: `property:${property.id}`,
+    propertyId: property.id,
+    name: property.name,
+    category: 'real_estate',
+    value: property.currentValue * property.ownershipShare / 100,
+    notes: property.address,
+    isProperty: true,
+  }));
+  const displayAssets = [...state.assets, ...propertyAssets];
+  const total = displayAssets.reduce((sum, asset) => sum + asset.value, 0);
   $('#wealth-total').textContent = euro.format(total);
-  $('#wealth-count').textContent = `${state.assets.length} actif${state.assets.length === 1 ? '' : 's'}`;
+  $('#wealth-count').textContent = `${displayAssets.length} actif${displayAssets.length === 1 ? '' : 's'}`;
 
   const groups = Object.keys(ASSET_CATEGORIES).map((category) => ({
     category,
-    items: state.assets.filter((asset) => asset.category === category),
+    items: displayAssets.filter((asset) => asset.category === category),
   })).filter((group) => group.items.length);
 
   $('#wealth-categories').innerHTML = groups.length
@@ -192,10 +241,12 @@ async function renderPatrimoine() {
         ${items.map((asset) => `
           <div class="asset-row">
             <div class="asset-description"><strong>${esc(asset.name)}</strong>${asset.notes ? `<small>${esc(asset.notes)}</small>` : ''}</div>
-            <div class="asset-actions"><strong>${euro.format(asset.value)}</strong>
-              <button class="icon-btn" type="button" data-edit-asset="${esc(asset.id)}" aria-label="Modifier ${esc(asset.name)}" title="Modifier">&#9998;</button>
-              <button class="icon-btn" type="button" data-delete-asset="${esc(asset.id)}" aria-label="Supprimer ${esc(asset.name)}" title="Supprimer">&#10005;</button>
-            </div>
+            ${asset.isProperty
+              ? `<button class="asset-value-link" type="button" data-open-property="${esc(asset.propertyId)}">${euro.format(asset.value)} &#8594;</button>`
+              : `<div class="asset-actions"><strong>${euro.format(asset.value)}</strong>
+                  <button class="icon-btn" type="button" data-edit-asset="${esc(asset.id)}" aria-label="Modifier ${esc(asset.name)}" title="Modifier">&#9998;</button>
+                  <button class="icon-btn" type="button" data-delete-asset="${esc(asset.id)}" aria-label="Supprimer ${esc(asset.name)}" title="Supprimer">&#10005;</button>
+                </div>`}
           </div>`).join('')}
       </section>`).join('')
     : '<p class="muted">Aucun actif enregistré pour le moment.</p>';
@@ -254,6 +305,11 @@ $('#asset-form').addEventListener('submit', async (e) => {
 });
 
 $('#wealth-assets').addEventListener('click', async (e) => {
+  const propertyLink = e.target.closest('[data-open-property]');
+  if (propertyLink) {
+    setWealthTab('realestate', propertyLink.dataset.openProperty);
+    return;
+  }
   const edit = e.target.closest('[data-edit-asset]');
   if (edit) {
     const asset = state.assets.find((item) => item.id === edit.dataset.editAsset);
@@ -271,6 +327,393 @@ $('#wealth-assets').addEventListener('click', async (e) => {
     $('#wealth-msg').textContent = err.message;
     $('#wealth-msg').classList.add('error');
   }
+});
+
+let propertyDetailToken = 0;
+
+function currentYear() {
+  return new Date().getFullYear();
+}
+
+function setYearOptions(select, preferredYear = currentYear()) {
+  select.innerHTML = Array.from({ length: 11 }, (_, i) => currentYear() - i)
+    .map((year) => `<option value="${year}">${year}</option>`).join('');
+  select.value = String(preferredYear);
+}
+
+async function loadProperties(openId = '') {
+  try {
+    state.properties = await api('/properties');
+    renderPropertyList();
+    if (openId) await openPropertyDetail(openId);
+  } catch (err) {
+    $('#property-msg').textContent = err.message;
+    $('#property-msg').classList.add('error');
+  }
+}
+
+function renderPropertyList() {
+  $('#property-list').hidden = false;
+  $('#property-detail').hidden = true;
+  $('#property-form').hidden = true;
+  $('#property-list').innerHTML = state.properties.length
+    ? state.properties.map((property) => `
+      <button class="property-card" type="button" data-property-id="${esc(property.id)}">
+        <span><strong>${esc(property.name)}</strong><small>${esc(PROPERTY_TYPES[property.type] || '')}${property.address ? ` · ${esc(property.address)}` : ''}</small></span>
+        <span class="property-card-value">${euro.format(property.currentValue * property.ownershipShare / 100)}<small>votre quote-part</small></span>
+      </button>`).join('')
+    : '<p class="muted empty-properties">Aucun bien immobilier enregistré.</p>';
+}
+
+function setWealthTab(tab, openId = '') {
+  state.wealthTab = tab;
+  $$('[data-wealth-tab]').forEach((button) => {
+    const active = button.dataset.wealthTab === tab;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  $('#wealth-overview-panel').hidden = tab !== 'overview';
+  $('#wealth-realestate-panel').hidden = tab !== 'realestate';
+  if (tab === 'realestate') loadProperties(openId);
+  else renderPatrimoine();
+}
+
+$$('[data-wealth-tab]').forEach((button) => button.addEventListener('click', () => setWealthTab(button.dataset.wealthTab)));
+
+$('#property-list').addEventListener('click', (e) => {
+  const card = e.target.closest('[data-property-id]');
+  if (card) openPropertyDetail(card.dataset.propertyId);
+});
+
+function openPropertyForm(property = null) {
+  const form = $('#property-form');
+  form.dataset.propertyId = property?.id || '';
+  $('#property-form-title').textContent = property ? 'Modifier le bien' : 'Nouveau bien immobilier';
+  $('#property-name').value = property?.name || '';
+  $('#property-address').value = property?.address || '';
+  $('#property-type').value = property?.type || 'unfurnished';
+  $('#property-regime').value = property?.taxRegime || 'micro';
+  $('#property-landlord-status').value = property?.landlordStatus || 'non_professional';
+  $('#property-share').value = property?.ownershipShare ?? 100;
+  $('#property-acquired').value = property?.acquisitionDate || '';
+  $('#property-purchase').value = property?.purchasePrice ?? 0;
+  $('#property-value').value = property?.currentValue ?? 0;
+  $('#property-rent').value = property?.monthlyRent ?? 0;
+  $('#property-notes').value = property?.notes || '';
+  form.hidden = false;
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+$('#property-add').addEventListener('click', () => {
+  $('#property-msg').textContent = '';
+  $('#property-msg').classList.remove('error');
+  openPropertyForm();
+});
+
+$('#property-cancel').addEventListener('click', () => {
+  $('#property-form').hidden = true;
+  $('#property-form').dataset.propertyId = '';
+});
+
+$('#property-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const id = form.dataset.propertyId;
+  const payload = {
+    name: $('#property-name').value.trim(),
+    address: $('#property-address').value.trim(),
+    type: $('#property-type').value,
+    taxRegime: $('#property-regime').value,
+    landlordStatus: $('#property-landlord-status').value,
+    ownershipShare: num($('#property-share').value),
+    acquisitionDate: $('#property-acquired').value,
+    purchasePrice: num($('#property-purchase').value),
+    currentValue: num($('#property-value').value),
+    monthlyRent: num($('#property-rent').value),
+    notes: $('#property-notes').value.trim(),
+  };
+  $('#property-save').disabled = true;
+  try {
+    const saved = await api(id ? `/properties/${encodeURIComponent(id)}` : '/properties', { method: id ? 'PUT' : 'POST', body: payload });
+    form.reset();
+    form.dataset.propertyId = '';
+    form.hidden = true;
+    $('#property-msg').textContent = id ? 'Bien mis à jour.' : 'Bien ajouté.';
+    $('#property-msg').classList.remove('error');
+    await loadProperties(saved.id);
+    await renderPatrimoine();
+  } catch (err) {
+    $('#property-msg').textContent = err.message;
+    $('#property-msg').classList.add('error');
+  } finally {
+    $('#property-save').disabled = false;
+  }
+});
+
+$('#property-back').addEventListener('click', renderPropertyList);
+$('#property-edit').addEventListener('click', () => {
+  const property = state.properties.find((item) => item.id === state.activePropertyId);
+  if (property) openPropertyForm(property);
+});
+
+$('#property-delete').addEventListener('click', async () => {
+  if (!state.activePropertyId || !confirm('Supprimer ce bien et toutes ses écritures ?')) return;
+  try {
+    await api(`/properties/${encodeURIComponent(state.activePropertyId)}`, { method: 'DELETE' });
+    state.activePropertyId = '';
+    $('#property-msg').textContent = 'Bien et journal supprimés.';
+    $('#property-msg').classList.remove('error');
+    await loadProperties();
+    await renderPatrimoine();
+  } catch (err) {
+    $('#property-msg').textContent = err.message;
+    $('#property-msg').classList.add('error');
+  }
+});
+
+async function openPropertyDetail(id) {
+  const property = state.properties.find((item) => item.id === id);
+  if (!property) return;
+  state.activePropertyId = id;
+  const token = ++propertyDetailToken;
+  const chartYear = Number($('#property-chart-year').value) || currentYear();
+  const taxYear = Number($('#tax-year').value) || currentYear();
+  $('#property-list').hidden = true;
+  $('#property-form').hidden = true;
+  $('#property-detail').hidden = false;
+  $('#property-summary').innerHTML = `
+    <div class="property-summary-name"><span>Bien immobilier</span><strong>${esc(property.name)}</strong></div>
+    <div><span>Valeur actuelle · quote-part ${property.ownershipShare} %</span><strong>${euro.format(property.currentValue * property.ownershipShare / 100)}</strong></div>
+    <div><span>Loyer mensuel indicatif</span><strong>${euro.format(property.monthlyRent)}</strong></div>
+    <div><span>Régime déclaré</span><strong>${property.taxRegime === 'micro' ? 'Micro' : 'Réel'} · ${PROPERTY_TYPES[property.type]}</strong></div>
+    ${property.address ? `<p>${esc(property.address)}</p>` : ''}`;
+
+  setYearOptions($('#property-chart-year'), chartYear);
+  setYearOptions($('#tax-year'), taxYear);
+  try {
+    state.propertyTransactions = await api(`/properties/${encodeURIComponent(id)}/transactions`);
+  } catch (err) {
+    if (token === propertyDetailToken) $('#property-msg').textContent = err.message;
+    return;
+  }
+  if (token !== propertyDetailToken || state.activePropertyId !== id) return;
+  renderPropertyYear();
+  renderPropertyTransactionList();
+  renderPropertyTaxReport();
+}
+
+function renderPropertyYear() {
+  const year = Number($('#property-chart-year').value || currentYear());
+  const property = state.properties.find((item) => item.id === state.activePropertyId);
+  if (!property) return;
+  const months = Array.from({ length: 12 }, (_, index) => ({
+    month: index,
+    income: 0,
+    expenses: 0,
+  }));
+  for (const transaction of state.propertyTransactions) {
+    if (Number(transaction.date.slice(0, 4)) !== year) continue;
+    const month = Number(transaction.date.slice(5, 7)) - 1;
+    if (month < 0 || month > 11) continue;
+    const total = transaction.amount * property.ownershipShare / 100;
+    if (transaction.type === 'income') months[month].income += total;
+    else months[month].expenses += total;
+  }
+  const max = Math.max(1, ...months.flatMap((item) => [item.income, item.expenses]));
+  $('#property-profit-chart').innerHTML = `<div class="property-month-chart">${months.map((item) => {
+    const net = item.income - item.expenses;
+    const monthLabel = new Date(year, item.month, 1).toLocaleDateString('fr-FR', { month: 'short' });
+    return `<div class="property-month" title="${monthLabel} ${year} · recettes ${euro.format(item.income)} · dépenses ${euro.format(item.expenses)} · solde ${euro.format(net)}">
+      <div class="property-month-bars"><i class="income" style="height:${item.income / max * 100}%"></i><i class="expense" style="height:${item.expenses / max * 100}%"></i></div>
+      <small>${monthLabel}</small>
+    </div>`;
+  }).join('')}</div>`;
+  $('#property-monthly-breakdown').innerHTML = `<table><thead><tr><th>Mois</th><th>Recettes</th><th>Dépenses</th><th>Solde</th></tr></thead><tbody>
+    ${months.map((item) => `<tr><td>${new Date(year, item.month, 1).toLocaleDateString('fr-FR', { month: 'long' })}</td>
+      <td>${euro.format(item.income)}</td><td>${euro.format(item.expenses)}</td>
+      <td class="${item.income >= item.expenses ? 'positive-text' : 'negative-text'}">${euro.format(item.income - item.expenses)}</td></tr>`).join('')}
+  </tbody></table>`;
+  const income = months.reduce((sum, item) => sum + item.income, 0);
+  const expenses = months.reduce((sum, item) => sum + item.expenses, 0);
+  $('#property-year-totals').innerHTML = `
+    <span><i class="legend-dot income"></i> Recettes ${euro.format(income)}</span>
+    <span><i class="legend-dot expense"></i> Dépenses ${euro.format(expenses)}</span>
+    <strong class="${income >= expenses ? 'positive-text' : 'negative-text'}">Solde ${euro.format(income - expenses)}</strong>`;
+}
+
+$('#property-chart-year').addEventListener('change', renderPropertyYear);
+$('#tax-year').addEventListener('change', renderPropertyTaxReport);
+
+function renderPropertyTransactionList() {
+  const property = state.properties.find((item) => item.id === state.activePropertyId);
+  if (!property) return;
+  $('#property-transactions').innerHTML = state.propertyTransactions.length
+    ? state.propertyTransactions.map((transaction) => {
+      const signedValue = transaction.type === 'income' ? transaction.amount : -transaction.amount;
+      const ownedValue = signedValue * property.ownershipShare / 100;
+      return `<div class="transaction-row">
+        <div><strong>${PROPERTY_TRANSACTION_LABELS[transaction.category] || 'Mouvement'}</strong>
+          <small>${fromISO(transaction.date).toLocaleDateString('fr-FR')}${transaction.description ? ` · ${esc(transaction.description)}` : ''}</small></div>
+        <div class="transaction-actions"><strong class="${ownedValue >= 0 ? 'positive-text' : 'negative-text'}">${euro.format(ownedValue)}</strong>
+          <button class="icon-btn" type="button" data-delete-transaction="${esc(transaction.id)}" aria-label="Supprimer le mouvement">&#10005;</button></div>
+      </div>`;
+    }).join('')
+    : '<p class="muted">Aucun mouvement enregistré pour ce bien.</p>';
+}
+
+$('#transaction-add').addEventListener('click', () => {
+  const form = $('#transaction-form');
+  form.reset();
+  $('#transaction-date').value = toISO(new Date());
+  form.hidden = false;
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+$('#transaction-cancel').addEventListener('click', () => { $('#transaction-form').hidden = true; });
+
+$('#transaction-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const button = $('#transaction-save');
+  button.disabled = true;
+  try {
+    await api(`/properties/${encodeURIComponent(state.activePropertyId)}/transactions`, {
+      method: 'POST',
+      body: {
+        date: $('#transaction-date').value,
+        category: $('#transaction-category').value,
+        amount: num($('#transaction-amount').value),
+        description: $('#transaction-description').value.trim(),
+      },
+    });
+    $('#transaction-form').hidden = true;
+    await openPropertyDetail(state.activePropertyId);
+  } catch (err) {
+    $('#property-msg').textContent = err.message;
+    $('#property-msg').classList.add('error');
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#property-transactions').addEventListener('click', async (e) => {
+  const button = e.target.closest('[data-delete-transaction]');
+  if (!button || !confirm('Supprimer ce mouvement ?')) return;
+  try {
+    await api(`/properties/${encodeURIComponent(state.activePropertyId)}/transactions/${encodeURIComponent(button.dataset.deleteTransaction)}`, { method: 'DELETE' });
+    await openPropertyDetail(state.activePropertyId);
+  } catch (err) {
+    $('#property-msg').textContent = err.message;
+    $('#property-msg').classList.add('error');
+  }
+});
+
+function transactionsForYear(year) {
+  return state.propertyTransactions.filter((item) => Number(item.date.slice(0, 4)) === year);
+}
+
+function propertyTaxNumbers(property, transactions) {
+  const share = property.ownershipShare / 100;
+  const sum = (items) => items.reduce((total, item) => total + item.amount, 0) * share;
+  const receipts = transactions.filter((item) => item.type === 'income');
+  const expenses = transactions.filter((item) => item.type === 'expense');
+  const rents = sum(receipts.filter((item) => item.category === 'rent'));
+  const otherIncome = sum(receipts.filter((item) => item.category === 'other_income'));
+  const recoveredCharges = sum(receipts.filter((item) => item.category === 'recovered_charges'));
+  const deductible = sum(expenses.filter((item) => PROPERTY_DEDUCTIBLE.has(item.category)));
+  const interest = sum(expenses.filter((item) => item.category === 'loan_interest'));
+  const chargesNotInterest = sum(expenses.filter((item) => PROPERTY_DEDUCTIBLE.has(item.category) && item.category !== 'loan_interest'));
+  const excludedExpenses = sum(expenses.filter((item) => !PROPERTY_DEDUCTIBLE.has(item.category)));
+  return { share, rents, otherIncome, recoveredCharges, deductible, interest, chargesNotInterest, excludedExpenses, income: sum(receipts) };
+}
+
+function taxBoxHTML(box, description, amount, hint = '') {
+  return `<div class="tax-box-row"><strong>${box}</strong><span>${description}${hint ? `<small>${hint}</small>` : ''}</span><b>${amount == null ? 'À calculer' : euro.format(amount)}</b></div>`;
+}
+
+function renderPropertyTaxReport() {
+  const property = state.properties.find((item) => item.id === state.activePropertyId);
+  if (!property) return;
+  const year = Number($('#tax-year').value || currentYear());
+  const items = transactionsForYear(year);
+  const totals = propertyTaxNumbers(property, items);
+  const printIntro = `<h1>Rapport préparatoire – Revenus immobiliers ${year}</h1>
+    <p><strong>${esc(property.name)}</strong> · ${esc(property.address || 'Adresse non renseignée')}</p>
+    <p>Type : ${PROPERTY_TYPES[property.type]} · Régime : ${property.taxRegime === 'micro' ? 'micro' : 'réel'} · Quote-part : ${property.ownershipShare} %</p>
+    <p>Édité le ${new Date().toLocaleDateString('fr-FR')}</p>`;
+  let rows = '';
+  let disclaimer = '';
+
+  if (property.type === 'unfurnished' && property.taxRegime === 'micro') {
+    const gross = totals.rents + totals.otherIncome;
+    rows = taxBoxHTML('2042 · 4BE', 'Revenus fonciers bruts à déclarer au micro-foncier', gross)
+      + taxBoxHTML('Estimation', 'Base après abattement forfaitaire de 30 %', gross * 0.7);
+    disclaimer = 'Les charges récupérées sont isolées et ne sont pas ajoutées automatiquement au montant 4BE. Leur traitement dépend de leur nature. Le micro-foncier est soumis à conditions et à un plafond global du foyer fiscal.';
+  } else if (property.type === 'unfurnished' && property.taxRegime === 'real') {
+    const net = totals.rents + totals.otherIncome + totals.recoveredCharges - totals.deductible;
+    if (net >= 0) {
+      rows = taxBoxHTML('2042 · 4BA', 'Revenu foncier net positif estimé (après déclaration 2044)', net);
+    } else {
+      const nonInterestDeficit = Math.max(0, totals.chargesNotInterest - totals.rents - totals.otherIncome - totals.recoveredCharges);
+      const interestDeficit = Math.min(totals.interest, Math.max(0, -net));
+      const globalDeductible = Math.min(10700, nonInterestDeficit);
+      rows = taxBoxHTML('2042 · 4BC', 'Déficit imputable estimatif, plafond général de 10 700 €', globalDeductible)
+        + taxBoxHTML('2042 · 4BB', 'Part estimée reportable sur revenus fonciers futurs', Math.max(0, -net - globalDeductible), 'Inclut la part liée aux intérêts d’emprunt et dépassements de plafond.');
+    }
+    rows += `<div class="tax-breakdown"><strong>À reporter / vérifier sur la déclaration 2044</strong>
+      <p>Loyers et autres recettes : ${euro.format(totals.rents + totals.otherIncome + totals.recoveredCharges)}</p>
+      <p>Charges déductibles enregistrées : ${euro.format(totals.deductible)}</p>
+      <p>Dont intérêts d’emprunt : ${euro.format(totals.interest)}</p>
+      <p>Dépenses exclues du calcul : ${euro.format(totals.excludedExpenses)}</p></div>`;
+    disclaimer = 'Estimation simplifiée : vérifiez la déductibilité de chaque dépense, les régularisations de copropriété, les déficits antérieurs et les éventuels plafonds majorés pour travaux énergétiques. Le report 4BB dépend aussi de votre historique fiscal.';
+  } else if (property.taxRegime === 'micro' && property.landlordStatus === 'non_professional') {
+    let box;
+    let allowance;
+    if (property.type === 'tourism_classified') { box = '5NG / 5OG / 5PG'; allowance = '50 %'; }
+    else if (property.type === 'tourism_unclassified') { box = '5NH / 5OH / 5PH'; allowance = '30 %'; }
+    else { box = '5NI / 5OI / 5PI'; allowance = '50 %'; }
+    rows = taxBoxHTML(`2042-C-PRO · ${box}`, 'Recettes brutes de location meublée non professionnelle à déclarer', totals.income)
+      + `<div class="tax-breakdown"><strong>Abattement forfaitaire officiel indicatif : ${allowance}</strong><p>Le calcul de l’abattement et du revenu imposable est effectué par l’administration.</p></div>`;
+    disclaimer = 'Les suffixes de cases varient selon le déclarant du foyer. Seuils et conditions du micro à vérifier pour l’année concernée ; le minimum d’abattement s’apprécie au niveau de l’activité déclarée.';
+  } else if (property.taxRegime === 'real' && property.landlordStatus === 'non_professional') {
+    const box = property.type === 'unfurnished' ? '' : '5NA / 5OA / 5PA';
+    rows = taxBoxHTML('Liasse 2031-SD', 'Résultat comptable à faire établir (dont amortissements)', null, 'Non calculé par cette application')
+      + (box ? taxBoxHTML(`2042-C-PRO · ${box}`, 'Bénéfice LMNP issu de la liasse 2031', null, 'À recopier depuis le résultat fiscal validé') : '');
+    disclaimer = 'Le régime réel meublé requiert une comptabilité et une liasse 2031, notamment pour traiter amortissements et déficits. Aucun montant de case ne peut être déduit du seul journal de recettes et dépenses.';
+  } else if (property.taxRegime === 'real' && property.landlordStatus === 'professional') {
+    rows = taxBoxHTML('Liasse 2031-SD', 'Résultat professionnel à faire établir', null, 'Non calculé par cette application')
+      + taxBoxHTML('2042-C-PRO · 5KC / 5LC / 5MC', 'Bénéfice BIC professionnel issu de la liasse', null, 'À recopier depuis le résultat fiscal validé');
+    disclaimer = 'Le régime réel BIC nécessite une comptabilité complète et la liasse 2031. Vérifiez le statut LMP au niveau du foyer fiscal et les cases de l’année déclarée.';
+  } else {
+    rows = `<p>Pour un loueur professionnel au micro, vérifiez la case applicable à votre activité et à l’année sur la notice 2042-C-PRO.</p>`;
+    disclaimer = 'Les recettes et charges ci-dessous sont une synthèse du journal, pas un calcul comptable ou fiscal validé.';
+  }
+
+  const sourceLinks = `<p class="tax-sources">Sources officielles : <a href="https://www.impots.gouv.fr/particulier/location-vide-de-meubles" target="_blank" rel="noreferrer">Location vide de meubles</a> · <a href="https://www.impots.gouv.fr/particulier/location-meublee" target="_blank" rel="noreferrer">Location meublée</a>.</p>`;
+  const journalSummary = `<div class="tax-breakdown"><strong>Synthèse saisie · quote-part ${property.ownershipShare} %</strong>
+    <p>Recettes totales du journal : ${euro.format(totals.income)}</p>
+    <p>Dépenses totales du journal : ${euro.format(items.filter((item) => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) * totals.share)}</p></div>`;
+  const reportHTML = `${printIntro}<p class="tax-perimeter">Montants calculés pour ce bien et votre quote-part. Ils doivent être agrégés avec vos autres biens et revenus relevant du même régime avant déclaration.</p>
+    ${journalSummary}<div class="tax-report-rows">${rows}</div>
+    <p class="tax-warning">Rapport préparatoire non télétransmis. Pour les revenus ${year}, vérifiez les cases et règles sur les formulaires officiels de la campagne déclarative correspondante. ${disclaimer}</p>
+    ${sourceLinks}`;
+  $('#tax-report').innerHTML = reportHTML;
+  $('#tax-print-report').innerHTML = `${reportHTML}<h2>Journal annuel</h2>${renderPrintTransactions(property, items)}`;
+}
+
+function renderPrintTransactions(property, items) {
+  if (!items.length) return '<p>Aucun mouvement enregistré pour cette année.</p>';
+  return `<table><thead><tr><th>Date</th><th>Nature</th><th>Description</th><th>Montant · quote-part</th></tr></thead><tbody>
+    ${items.slice().sort((a, b) => a.date.localeCompare(b.date)).map((item) => `
+      <tr><td>${fromISO(item.date).toLocaleDateString('fr-FR')}</td><td>${PROPERTY_TRANSACTION_LABELS[item.category]}</td>
+      <td>${esc(item.description || '')}</td><td>${euro.format(item.amount * property.ownershipShare / 100)}</td></tr>`).join('')}
+  </tbody></table>`;
+}
+
+$('#tax-print').addEventListener('click', () => {
+  renderPropertyTaxReport();
+  document.body.classList.add('tax-printing');
+  window.print();
+  window.setTimeout(() => document.body.classList.remove('tax-printing'), 1000);
 });
 
 let savedSimulations = [];
@@ -560,6 +1003,9 @@ function showAuth() {
   state.profile = null;
   state.entries = [];
   state.assets = [];
+  state.properties = [];
+  state.activePropertyId = '';
+  state.propertyTransactions = [];
   $('.bottom-nav').hidden = true;
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-auth'));
 }
