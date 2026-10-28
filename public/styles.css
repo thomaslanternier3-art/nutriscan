@@ -27,13 +27,35 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .topbar h1 { margin: 0; font-size: 1.25rem; }
+.home-button { border: 0; padding: 0 4px; background: transparent; color: inherit; font-size: 1.6rem; line-height: 1; cursor: pointer; }
 
 main { max-width: 640px; margin: 0 auto; padding: 12px; }
 
 .view { display: none; }
 .view.active { display: block; }
+
+.home-intro { padding: 22px 4px 16px; }
+.home-intro .eyebrow { margin: 0 0 8px; color: var(--green); font-size: .75rem; font-weight: 700; }
+.home-intro h2 { margin: 0; font-size: 1.55rem; }
+.home-intro .muted { margin: 6px 0 0; }
+.module-grid { display: grid; gap: 10px; }
+.module-card {
+  width: 100%; min-height: 104px; display: flex; align-items: center; gap: 14px;
+  padding: 16px; text-align: left; color: var(--text); background: var(--card);
+  border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+  cursor: pointer;
+}
+.module-card:active { background: var(--green-light); }
+.module-icon { width: 54px; height: 54px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px; background: var(--green-light); font-size: 1.8rem; }
+.module-copy { display: grid; gap: 5px; flex: 1; }
+.module-copy strong { font-size: 1.1rem; }
+.module-copy span { color: var(--muted); font-size: .9rem; }
+.module-arrow { color: var(--green); font-size: 1.4rem; }
 
 .card {
   background: var(--card);

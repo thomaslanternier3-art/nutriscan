@@ -13,7 +13,10 @@
   <script src="vendor/html5-qrcode.min.js"></script>
 </head>
 <body>
-  <header class="topbar"><h1>NutriScan</h1></header>
+  <header class="topbar">
+    <button id="home-button" class="home-button" type="button" aria-label="Accueil des modules" hidden>&#8962;</button>
+    <h1 id="app-title">Mon espace</h1>
+  </header>
 
   <main>
     <!-- Connexion -->
@@ -28,8 +31,27 @@
       </form>
     </section>
 
-    <!-- Tableau de bord -->
-    <section id="view-dashboard" class="view">
+    <!-- Accueil des modules -->
+    <section id="view-home" class="view">
+      <div class="home-intro">
+        <p class="eyebrow">ESPACE PERSONNEL</p>
+        <h2>Que souhaitez-vous faire ?</h2>
+        <p class="muted">Choisissez un module pour continuer.</p>
+      </div>
+      <div class="module-grid">
+        <button class="module-card" type="button" data-module="nutriscan">
+          <span class="module-icon" aria-hidden="true">&#127860;</span>
+          <span class="module-copy">
+            <strong>NutriScan</strong>
+            <span>Suivi alimentaire et objectifs caloriques</span>
+          </span>
+          <span class="module-arrow" aria-hidden="true">&#8594;</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Module NutriScan : tableau de bord alimentaire -->
+    <section id="view-nutriscan" class="view">
       <div class="segmented">
         <button data-mode="day" class="active">Jour</button>
         <button data-mode="week">Semaine</button>
@@ -168,7 +190,8 @@
   </main>
 
   <nav class="bottom-nav" hidden>
-    <button data-view="dashboard" class="active">&#128202;<span>Tableau</span></button>
+    <button data-view="home">&#8962;<span>Modules</span></button>
+    <button data-view="nutriscan" class="active">&#127860;<span>NutriScan</span></button>
     <button data-view="scan">&#128247;<span>Scanner</span></button>
     <button data-view="profile">&#128100;<span>Profil</span></button>
   </nav>

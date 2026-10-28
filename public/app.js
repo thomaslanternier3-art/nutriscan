@@ -72,12 +72,17 @@ function sumDay(date) {
 function showView(name) {
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
   $$('.bottom-nav button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
+  const inNutriScan = ['nutriscan', 'scan', 'profile'].includes(name);
+  $('#home-button').hidden = !inNutriScan;
+  $('#app-title').textContent = inNutriScan ? 'NutriScan' : 'Mon espace';
   if (name !== 'scan') stopScanner();
-  if (name === 'dashboard') renderDashboard();
+  if (name === 'nutriscan') renderDashboard();
   if (name === 'profile') renderProfile();
 }
 
 $$('.bottom-nav button').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+$('#home-button').addEventListener('click', () => showView('home'));
+$$('[data-module]').forEach((b) => b.addEventListener('click', () => showView(b.dataset.module)));
 document.addEventListener('click', (e) => {
   const link = e.target.closest('[data-goto]');
   if (link) { e.preventDefault(); showView(link.dataset.goto); }
@@ -109,7 +114,7 @@ function onLoggedIn(user) {
   state.profile = user.profile;
   $('#account-email').textContent = user.email;
   $('.bottom-nav').hidden = false;
-  showView(user.profile ? 'dashboard' : 'profile');
+  showView('home');
 }
 
 $('#auth-toggle').addEventListener('click', () => setAuthMode(authMode === 'login' ? 'register' : 'login'));
@@ -430,7 +435,7 @@ $('#product-form').addEventListener('submit', async (e) => {
   state.date = entry.date;
   state.mode = 'day';
   $$('.segmented button').forEach((x) => x.classList.toggle('active', x.dataset.mode === 'day'));
-  showView('dashboard');
+  showView('nutriscan');
 });
 
 /* ---------- Profil ---------- */
