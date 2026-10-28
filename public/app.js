@@ -5,6 +5,29 @@ const $$ = (s) => document.querySelectorAll(s);
 
 const MEALS = { breakfast: 'Petit-déjeuner', lunch: 'Déjeuner', snack: 'Collation', dinner: 'Dîner' };
 const KCAL_PER_KG_FAT = 7700;
+const ASSET_CATEGORIES = {
+  real_estate: 'Immobilier',
+  stocks: 'Bourse',
+  bank: 'Banque & épargne',
+  crypto: 'Cryptoactifs',
+  vehicles: 'Véhicules',
+  valuables: 'Biens de valeur',
+  other: 'Autres',
+};
+const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
+const compactEuro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', notation: 'compact', maximumFractionDigits: 1 });
+const SIMULATION_FIELDS = [
+  ['purchasePrice', 'sim-price'], ['notaryRate', 'sim-notary'], ['agencyRate', 'sim-agency'],
+  ['works', 'sim-works'], ['furnishing', 'sim-furnishing'], ['acquisitionOther', 'sim-acquisition-other'],
+  ['rentMonthly', 'sim-rent'], ['otherIncomeMonthly', 'sim-income-other'], ['vacancyRate', 'sim-vacancy'],
+  ['rentGrowthRate', 'sim-rent-growth'], ['propertyTaxAnnual', 'sim-property-tax'], ['condoAnnual', 'sim-condo'],
+  ['insuranceAnnual', 'sim-insurance'], ['maintenanceAnnual', 'sim-maintenance'], ['managementRate', 'sim-management'],
+  ['otherExpensesAnnual', 'sim-expenses-other'], ['expenseGrowthRate', 'sim-expense-growth'],
+  ['downPayment', 'sim-down'], ['interestRate', 'sim-interest'], ['loanTermYears', 'sim-term'],
+  ['loanInsuranceRate', 'sim-loan-insurance'], ['holdingYears', 'sim-horizon'],
+  ['propertyGrowthRate', 'sim-property-growth'], ['saleFeeRate', 'sim-sale-fees'],
+  ['taxRegime', 'sim-tax-regime'], ['incomeTaxRate', 'sim-tax-rate'], ['socialRate', 'sim-social-rate'],
+];
 
 async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(`/api${path}`, {
@@ -28,8 +51,9 @@ const fromISO = (s) => { const [y, m, d] = s.split('-').map(Number); return new 
 const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
 const weekStart = (iso) => { const d = fromISO(iso); return addDays(d, -((d.getDay() + 6) % 7)); };
 
-const state = { date: toISO(new Date()), mode: 'day', profile: null, entries: [] };
+const state = { date: toISO(new Date()), mode: 'day', profile: null, entries: [], assets: [] };
 let renderToken = 0;
+let wealthRenderToken = 0;
 
 /* ---------- Calculs nutritionnels ---------- */
 
@@ -69,18 +93,447 @@ function sumDay(date) {
 
 /* ---------- Navigation ---------- */
 
+const NAV_ITEMS = {
+  home: [
+    { view: 'home', icon: '&#8962;', label: 'Modules' },
+  ],
+  modules: {
+    nutriscan: {
+      title: 'NutriScan',
+      views: ['nutriscan', 'scan', 'profile'],
+      items: [
+        { view: 'home', icon: '&#8962;', label: 'Modules' },
+        { view: 'nutriscan', icon: '&#128202;', label: 'Résumé' },
+        { view: 'scan', icon: '&#128247;', label: 'Scanner' },
+        { view: 'profile', icon: '&#128100;', label: 'Profil' },
+      ],
+    },
+    patrimoine: {
+      title: 'Patrimoine',
+      views: ['patrimoine'],
+      items: [
+        { view: 'home', icon: '&#8962;', label: 'Modules' },
+        { view: 'patrimoine', icon: '&#128188;', label: 'Patrimoine' },
+      ],
+    },
+    simulation: {
+      title: 'Simulation',
+      views: ['simulation'],
+      items: [
+        { view: 'home', icon: '&#8962;', label: 'Modules' },
+        { view: 'simulation', icon: '&#128200;', label: 'Simulation' },
+      ],
+    },
+  },
+};
+
+function moduleForView(view) {
+  return Object.entries(NAV_ITEMS.modules).find(([, module]) => module.views.includes(view))?.[0];
+}
+
+function renderNav(view) {
+  const moduleId = moduleForView(view);
+  const items = moduleId ? NAV_ITEMS.modules[moduleId].items : NAV_ITEMS.home;
+  $('.bottom-nav').innerHTML = items.map(({ view: destination, icon, label }) => `
+    <button class="nav-item${destination === view ? ' active' : ''}" data-view="${destination}" type="button">
+      <span class="nav-icon" aria-hidden="true">${icon}</span><span>${label}</span>
+    </button>`).join('');
+}
+
 function showView(name) {
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
-  $$('.bottom-nav button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
-  const inNutriScan = ['nutriscan', 'scan', 'profile'].includes(name);
-  $('#home-button').hidden = !inNutriScan;
-  $('#app-title').textContent = inNutriScan ? 'NutriScan' : 'Mon espace';
+  const moduleId = moduleForView(name);
+  renderNav(name);
+  $('#home-button').hidden = !moduleId;
+  $('#app-title').textContent = moduleId ? NAV_ITEMS.modules[moduleId].title : 'Mon espace';
   if (name !== 'scan') stopScanner();
   if (name === 'nutriscan') renderDashboard();
   if (name === 'profile') renderProfile();
+  if (name === 'patrimoine') renderPatrimoine();
+  if (name === 'simulation') enterSimulation();
 }
 
-$$('.bottom-nav button').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+async function renderPatrimoine() {
+  const token = ++wealthRenderToken;
+  try {
+    state.assets = await api('/assets');
+  } catch (err) {
+    $('#wealth-categories').innerHTML = `<p class="msg error">${esc(err.message)}</p>`;
+    $('#wealth-assets').innerHTML = '';
+    return;
+  }
+  if (token !== wealthRenderToken) return;
+
+  const total = state.assets.reduce((sum, asset) => sum + asset.value, 0);
+  $('#wealth-total').textContent = euro.format(total);
+  $('#wealth-count').textContent = `${state.assets.length} actif${state.assets.length === 1 ? '' : 's'}`;
+
+  const groups = Object.keys(ASSET_CATEGORIES).map((category) => ({
+    category,
+    items: state.assets.filter((asset) => asset.category === category),
+  })).filter((group) => group.items.length);
+
+  $('#wealth-categories').innerHTML = groups.length
+    ? groups.map(({ category, items }) => {
+      const value = items.reduce((sum, asset) => sum + asset.value, 0);
+      const share = total ? (value / total) * 100 : 0;
+      return `<div class="allocation-row" data-category="${category}">
+        <div class="allocation-label"><span>${ASSET_CATEGORIES[category]}</span><strong>${euro.format(value)}</strong></div>
+        <div class="allocation-track"><span style="width:${share}%"></span></div>
+        <small>${share.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} % du patrimoine</small>
+      </div>`;
+    }).join('')
+    : '<p class="muted">Ajoutez un actif pour voir sa répartition ici.</p>';
+
+  $('#wealth-assets').innerHTML = groups.length
+    ? groups.map(({ category, items }) => `
+      <section class="asset-group" data-category="${category}">
+        <div class="asset-group-heading"><h3>${ASSET_CATEGORIES[category]}</h3><span>${items.length}</span></div>
+        ${items.map((asset) => `
+          <div class="asset-row">
+            <div class="asset-description"><strong>${esc(asset.name)}</strong>${asset.notes ? `<small>${esc(asset.notes)}</small>` : ''}</div>
+            <div class="asset-actions"><strong>${euro.format(asset.value)}</strong>
+              <button class="icon-btn" type="button" data-edit-asset="${esc(asset.id)}" aria-label="Modifier ${esc(asset.name)}" title="Modifier">&#9998;</button>
+              <button class="icon-btn" type="button" data-delete-asset="${esc(asset.id)}" aria-label="Supprimer ${esc(asset.name)}" title="Supprimer">&#10005;</button>
+            </div>
+          </div>`).join('')}
+      </section>`).join('')
+    : '<p class="muted">Aucun actif enregistré pour le moment.</p>';
+}
+
+function openAssetForm(asset = null) {
+  const form = $('#asset-form');
+  form.dataset.assetId = asset?.id || '';
+  $('#asset-form-title').textContent = asset ? 'Modifier l’actif' : 'Nouvel actif';
+  $('#asset-name').value = asset?.name || '';
+  $('#asset-category').value = asset?.category || 'real_estate';
+  $('#asset-value').value = asset?.value ?? '';
+  $('#asset-notes').value = asset?.notes || '';
+  $('#asset-save').textContent = asset ? 'Enregistrer les modifications' : 'Enregistrer';
+  form.hidden = false;
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('#asset-name').focus();
+}
+
+$('#asset-add').addEventListener('click', () => {
+  $('#wealth-msg').textContent = '';
+  $('#wealth-msg').classList.remove('error');
+  openAssetForm();
+});
+
+$('#asset-cancel').addEventListener('click', () => {
+  $('#asset-form').hidden = true;
+  $('#asset-form').dataset.assetId = '';
+});
+
+$('#asset-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const id = form.dataset.assetId;
+  const payload = {
+    name: $('#asset-name').value.trim(),
+    category: $('#asset-category').value,
+    value: num($('#asset-value').value),
+    notes: $('#asset-notes').value.trim(),
+  };
+  $('#asset-save').disabled = true;
+  try {
+    await api(id ? `/assets/${encodeURIComponent(id)}` : '/assets', { method: id ? 'PUT' : 'POST', body: payload });
+    form.reset();
+    form.dataset.assetId = '';
+    form.hidden = true;
+    await renderPatrimoine();
+    $('#wealth-msg').textContent = id ? 'Actif mis à jour.' : 'Actif ajouté.';
+    $('#wealth-msg').classList.remove('error');
+  } catch (err) {
+    $('#wealth-msg').textContent = err.message;
+    $('#wealth-msg').classList.add('error');
+  } finally {
+    $('#asset-save').disabled = false;
+  }
+});
+
+$('#wealth-assets').addEventListener('click', async (e) => {
+  const edit = e.target.closest('[data-edit-asset]');
+  if (edit) {
+    const asset = state.assets.find((item) => item.id === edit.dataset.editAsset);
+    if (asset) openAssetForm(asset);
+    return;
+  }
+  const remove = e.target.closest('[data-delete-asset]');
+  if (!remove || !confirm('Supprimer cet actif ?')) return;
+  try {
+    await api(`/assets/${encodeURIComponent(remove.dataset.deleteAsset)}`, { method: 'DELETE' });
+    await renderPatrimoine();
+    $('#wealth-msg').textContent = 'Actif supprimé.';
+    $('#wealth-msg').classList.remove('error');
+  } catch (err) {
+    $('#wealth-msg').textContent = err.message;
+    $('#wealth-msg').classList.add('error');
+  }
+});
+
+let savedSimulations = [];
+let currentSimulationId = '';
+
+function readSimulationInputs() {
+  return Object.fromEntries(SIMULATION_FIELDS.map(([key, id]) => [
+    key,
+    id === 'sim-tax-regime' ? $(`#${id}`).value : num($(`#${id}`).value),
+  ]));
+}
+
+function writeSimulationInputs(inputs) {
+  for (const [key, id] of SIMULATION_FIELDS) {
+    if (inputs[key] != null) $(`#${id}`).value = inputs[key];
+  }
+}
+
+function calculateSimulation(inputs) {
+  const purchasePrice = inputs.purchasePrice;
+  const projectCost = purchasePrice
+    + purchasePrice * (inputs.notaryRate + inputs.agencyRate) / 100
+    + inputs.works + inputs.furnishing + inputs.acquisitionOther;
+  const loanAmount = Math.max(0, projectCost - inputs.downPayment);
+  const initialCash = projectCost - loanAmount;
+  const termMonths = inputs.loanTermYears * 12;
+  const monthlyRate = inputs.interestRate / 1200;
+  const monthlyPayment = loanAmount === 0 ? 0 : monthlyRate === 0
+    ? loanAmount / termMonths
+    : loanAmount * monthlyRate / (1 - (1 + monthlyRate) ** -termMonths);
+  const fixedExpenses = inputs.propertyTaxAnnual + inputs.condoAnnual + inputs.insuranceAnnual
+    + inputs.maintenanceAnnual + inputs.otherExpensesAnnual;
+  let loanBalance = loanAmount;
+  let cumulativeCashFlow = 0;
+  let elapsedMonths = 0;
+  const years = [];
+
+  for (let year = 1; year <= inputs.holdingYears; year += 1) {
+    let interestPaid = 0;
+    let paidMonths = 0;
+    for (let month = 0; month < 12 && elapsedMonths < termMonths; month += 1) {
+      const interest = loanBalance * monthlyRate;
+      const principal = Math.min(loanBalance, Math.max(0, monthlyPayment - interest));
+      interestPaid += interest;
+      loanBalance = Math.max(0, loanBalance - principal);
+      elapsedMonths += 1;
+      paidMonths += 1;
+    }
+
+    const growthYear = year - 1;
+    const rentCollected = (inputs.rentMonthly + inputs.otherIncomeMonthly) * 12
+      * (1 - inputs.vacancyRate / 100) * (1 + inputs.rentGrowthRate / 100) ** growthYear;
+    const operatingCosts = fixedExpenses * (1 + inputs.expenseGrowthRate / 100) ** growthYear
+      + rentCollected * inputs.managementRate / 100;
+    const taxableIncome = inputs.taxRegime === 'micro'
+      ? rentCollected * 0.7
+      : inputs.taxRegime === 'real'
+        ? rentCollected - operatingCosts - interestPaid
+        : 0;
+    const tax = inputs.taxRegime === 'none'
+      ? 0
+      : Math.max(0, taxableIncome) * (inputs.incomeTaxRate + inputs.socialRate) / 100;
+    const loanInsurance = loanAmount * inputs.loanInsuranceRate / 100 * paidMonths / 12;
+    const debtService = monthlyPayment * paidMonths + loanInsurance;
+    const cashFlow = rentCollected - operatingCosts - tax - debtService;
+    cumulativeCashFlow += cashFlow;
+
+    const estimatedValue = purchasePrice * (1 + inputs.propertyGrowthRate / 100) ** year;
+    const saleCosts = estimatedValue * inputs.saleFeeRate / 100;
+    const netEquity = estimatedValue - saleCosts - loanBalance;
+    years.push({
+      year, rentCollected, operatingCosts, interestPaid, tax, debtService, cashFlow,
+      estimatedValue, loanBalance, netEquity, cumulativeCashFlow,
+      netGain: netEquity + cumulativeCashFlow - initialCash,
+    });
+  }
+
+  return {
+    projectCost, loanAmount, initialCash, monthlyPayment,
+    grossYield: projectCost ? (inputs.rentMonthly + inputs.otherIncomeMonthly) * 12 / projectCost * 100 : 0,
+    netYield: projectCost ? (years[0].rentCollected - years[0].operatingCosts) / projectCost * 100 : 0,
+    years,
+  };
+}
+
+function renderCashFlowChart(years) {
+  const maxFlow = Math.max(1, ...years.map((row) => Math.abs(row.cashFlow)));
+  $('#sim-cashflow-chart').innerHTML = `<div class="sim-bars">${years.map((row) => {
+    const height = Math.max(1, Math.abs(row.cashFlow) / maxFlow * 46);
+    const top = row.cashFlow >= 0 ? 50 - height : 50;
+    return `<div class="sim-bar-column" title="Année ${row.year} : ${euro.format(row.cashFlow)}">
+      <span>${compactEuro.format(row.cashFlow)}</span>
+      <div class="sim-bar-track"><i class="${row.cashFlow < 0 ? 'negative' : ''}" style="top:${top}%;height:${height}%"></i></div>
+      <small>${row.year}</small>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderGainChart(result) {
+  const series = [{ year: 0, netGain: -result.initialCash }, ...result.years];
+  const width = Math.max(560, series.length * 52);
+  const height = 250;
+  const left = 76;
+  const right = width - 18;
+  const top = 18;
+  const bottom = height - 34;
+  const minValue = Math.min(0, ...series.map((row) => row.netGain));
+  const maxValue = Math.max(0, ...series.map((row) => row.netGain));
+  const range = Math.max(maxValue - minValue, 1);
+  const x = (index) => left + index / (series.length - 1 || 1) * (right - left);
+  const y = (value) => bottom - (value - minValue) / range * (bottom - top);
+  const points = series.map((row, index) => `${x(index)},${y(row.netGain)}`).join(' ');
+  const tickValues = [0, 0.25, 0.5, 0.75, 1].map((fraction) => minValue + range * fraction);
+  const grids = tickValues.map((value) => `
+    <line x1="${left}" y1="${y(value)}" x2="${right}" y2="${y(value)}" class="chart-grid" />
+    <text x="${left - 8}" y="${y(value) + 4}" text-anchor="end">${compactEuro.format(value)}</text>`).join('');
+  const labels = series.filter((row) => row.year === 0 || row.year === result.years.length || row.year % 5 === 0)
+    .map((row) => {
+      const index = series.findIndex((point) => point.year === row.year);
+      return `<text x="${x(index)}" y="${height - 8}" text-anchor="middle">${row.year === 0 ? 'Départ' : `${row.year} ans`}</text>`;
+    }).join('');
+  const dots = series.map((row, index) => `<circle cx="${x(index)}" cy="${y(row.netGain)}" r="3.5"><title>${row.year === 0 ? 'Départ' : `Année ${row.year}`} : ${euro.format(row.netGain)}</title></circle>`).join('');
+  $('#sim-gain-chart').innerHTML = `<svg class="gain-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Évolution du gain net potentiel entre le départ et l'année ${result.years.length}">
+    ${grids}<line x1="${left}" y1="${y(0)}" x2="${right}" y2="${y(0)}" class="zero-line" />
+    <polyline points="${points}" class="gain-line" />${dots}${labels}</svg>`;
+}
+
+function renderSimulation() {
+  const inputs = readSimulationInputs();
+  const result = calculateSimulation(inputs);
+  const horizon = result.years.at(-1);
+  const breakEven = result.years.find((row) => row.netGain >= 0);
+  const profitable = horizon.netGain >= 0;
+  $('#simulation-results').hidden = false;
+  $('#sim-verdict').classList.toggle('profitable', profitable);
+  $('#sim-verdict').classList.toggle('unprofitable', !profitable);
+  $('#sim-verdict-label').textContent = profitable ? 'Rentable à l’horizon simulé' : 'Non rentable à l’horizon simulé';
+  $('#sim-verdict-value').textContent = `${horizon.netGain >= 0 ? '+' : ''}${euro.format(horizon.netGain)}`;
+  $('#sim-verdict-detail').textContent = `Après ${inputs.holdingYears} ans, en tenant compte des cash-flows, du crédit restant et des frais de vente estimés.`;
+
+  const roi = result.initialCash ? horizon.netGain / result.initialCash * 100 : null;
+  const firstYear = result.years[0];
+  const monthlyCashFlow = firstYear.cashFlow / 12;
+  const metrics = [
+    ['Coût total du projet', euro.format(result.projectCost)],
+    ['Crédit estimé', `${euro.format(result.loanAmount)} · ${euro.format(result.monthlyPayment)}/mois`],
+    ['Rendement brut', `${result.grossYield.toFixed(2)} %`],
+    ['Rendement net avant financement', `${result.netYield.toFixed(2)} %`],
+    ['Cash-flow mensuel (année 1)', `${monthlyCashFlow >= 0 ? '+' : ''}${euro.format(monthlyCashFlow)}`],
+    ['Rentabilité cumulée', roi == null ? 'Apport nul : ratio non calculable' : `${roi >= 0 ? '+' : ''}${roi.toFixed(1)} %`],
+    ['Seuil de rentabilité', breakEven ? `${breakEven.year} an${breakEven.year > 1 ? 's' : ''}` : `Non atteint en ${inputs.holdingYears} ans`],
+    ['Capital restant dû à la sortie', euro.format(horizon.loanBalance)],
+  ];
+  $('#sim-key-metrics').innerHTML = metrics.map(([label, value]) => `
+    <div class="sim-metric"><span>${label}</span><strong>${value}</strong></div>`).join('');
+
+  renderCashFlowChart(result.years);
+  renderGainChart(result);
+  $('#sim-year-table').innerHTML = `<table><thead><tr>
+    <th>Année</th><th>Loyers encaissés</th><th>Charges</th><th>Impôts</th><th>Crédit + assurance</th>
+    <th>Cash-flow annuel</th><th>Valeur estimée</th><th>Capital restant dû</th><th>Gain net si revente</th>
+  </tr></thead><tbody>${result.years.map((row) => `<tr>
+    <td>${row.year}</td><td>${euro.format(row.rentCollected)}</td><td>${euro.format(row.operatingCosts)}</td>
+    <td>${euro.format(row.tax)}</td><td>${euro.format(row.debtService)}</td>
+    <td class="${row.cashFlow < 0 ? 'negative-text' : 'positive-text'}">${euro.format(row.cashFlow)}</td>
+    <td>${euro.format(row.estimatedValue)}</td><td>${euro.format(row.loanBalance)}</td>
+    <td class="${row.netGain < 0 ? 'negative-text' : 'positive-text'}">${euro.format(row.netGain)}</td>
+  </tr>`).join('')}</tbody></table>`;
+}
+
+async function loadSavedSimulations() {
+  savedSimulations = await api('/simulations');
+  $('#saved-simulations').innerHTML = '<option value="">Nouveau scénario</option>' + savedSimulations
+    .map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('');
+  const exists = savedSimulations.some((item) => item.id === currentSimulationId);
+  if (!exists) currentSimulationId = '';
+  $('#saved-simulations').value = currentSimulationId;
+  $('#simulation-delete').hidden = !currentSimulationId;
+}
+
+async function enterSimulation() {
+  renderSimulation();
+  try {
+    await loadSavedSimulations();
+  } catch (err) {
+    $('#simulation-msg').textContent = err.message;
+    $('#simulation-msg').classList.add('error');
+  }
+}
+
+$('#simulation-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  renderSimulation();
+  $('#simulation-msg').textContent = '';
+  $('#simulation-msg').classList.remove('error');
+  $('#simulation-results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+$('#saved-simulations').addEventListener('change', () => {
+  currentSimulationId = $('#saved-simulations').value;
+  const simulation = savedSimulations.find((item) => item.id === currentSimulationId);
+  if (simulation) {
+    $('#sim-name').value = simulation.name;
+    writeSimulationInputs(simulation.inputs);
+    $('#simulation-delete').hidden = false;
+    renderSimulation();
+    $('#simulation-results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    $('#simulation-delete').hidden = true;
+  }
+});
+
+$('#simulation-save').addEventListener('click', async () => {
+  if (!$('#sim-name').reportValidity() || !$('#simulation-form').reportValidity()) return;
+  renderSimulation();
+  const payload = { name: $('#sim-name').value.trim(), inputs: readSimulationInputs() };
+  $('#simulation-save').disabled = true;
+  try {
+    const saved = await api(currentSimulationId ? `/simulations/${encodeURIComponent(currentSimulationId)}` : '/simulations', {
+      method: currentSimulationId ? 'PUT' : 'POST', body: payload,
+    });
+    currentSimulationId = saved.id;
+    await loadSavedSimulations();
+    $('#simulation-msg').textContent = 'Scénario enregistré.';
+    $('#simulation-msg').classList.remove('error');
+  } catch (err) {
+    $('#simulation-msg').textContent = err.message;
+    $('#simulation-msg').classList.add('error');
+  } finally {
+    $('#simulation-save').disabled = false;
+  }
+});
+
+$('#simulation-new').addEventListener('click', () => {
+  currentSimulationId = '';
+  $('#saved-simulations').value = '';
+  $('#simulation-delete').hidden = true;
+  $('#simulation-form').reset();
+  $('#simulation-msg').textContent = '';
+  $('#simulation-msg').classList.remove('error');
+  renderSimulation();
+});
+
+$('#simulation-delete').addEventListener('click', async () => {
+  if (!currentSimulationId || !confirm('Supprimer ce scénario enregistré ?')) return;
+  try {
+    await api(`/simulations/${encodeURIComponent(currentSimulationId)}`, { method: 'DELETE' });
+    currentSimulationId = '';
+    $('#simulation-form').reset();
+    await loadSavedSimulations();
+    renderSimulation();
+    $('#simulation-msg').textContent = 'Scénario supprimé.';
+    $('#simulation-msg').classList.remove('error');
+  } catch (err) {
+    $('#simulation-msg').textContent = err.message;
+    $('#simulation-msg').classList.add('error');
+  }
+});
+
+$('.bottom-nav').addEventListener('click', (e) => {
+  const button = e.target.closest('[data-view]');
+  if (button) showView(button.dataset.view);
+});
 $('#home-button').addEventListener('click', () => showView('home'));
 $$('[data-module]').forEach((b) => b.addEventListener('click', () => showView(b.dataset.module)));
 document.addEventListener('click', (e) => {
@@ -106,6 +559,7 @@ function showAuth() {
   stopScanner();
   state.profile = null;
   state.entries = [];
+  state.assets = [];
   $('.bottom-nav').hidden = true;
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-auth'));
 }
@@ -338,6 +792,39 @@ $('#manual-code').addEventListener('submit', (e) => {
   stopScanner();
   lookup($('#code-input').value);
 });
+
+$('#product-search').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const button = $('#search-submit');
+  const results = $('#search-results');
+  const params = new URLSearchParams({ name: $('#search-name').value.trim(), brand: $('#search-brand').value.trim() });
+  button.disabled = true;
+  $('#search-msg').textContent = 'Recherche en cours…';
+  $('#search-msg').classList.remove('error');
+  results.innerHTML = '';
+  try {
+    const data = await api(`/product-search?${params}`);
+    $('#search-msg').textContent = data.results.length
+      ? `${data.results.length} résultat${data.results.length > 1 ? 's' : ''} affiché${data.results.length > 1 ? 's' : ''}`
+      : 'Aucun produit trouvé. Essayez un autre nom ou une autre marque.';
+    results.innerHTML = data.results.map((product) => `
+      <button class="search-result" type="button" data-product-code="${esc(product.code)}" ${product.code ? '' : 'disabled'}>
+        <span><strong>${esc(product.name)}</strong><small>${esc(product.brand || 'Marque non renseignée')}</small></span>
+        <span class="result-code">${product.code ? esc(product.code) : 'Sans code-barres'}</span>
+      </button>`).join('');
+  } catch (err) {
+    $('#search-msg').textContent = err.message;
+    $('#search-msg').classList.add('error');
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#search-results').addEventListener('click', (e) => {
+  const result = e.target.closest('[data-product-code]');
+  if (result?.dataset.productCode) lookup(result.dataset.productCode);
+});
+
 $('#manual-entry').addEventListener('click', () => {
   stopScanner();
   fillProduct({});

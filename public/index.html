@@ -47,6 +47,22 @@
           </span>
           <span class="module-arrow" aria-hidden="true">&#8594;</span>
         </button>
+        <button class="module-card" type="button" data-module="patrimoine">
+          <span class="module-icon wealth-icon" aria-hidden="true">&#128188;</span>
+          <span class="module-copy">
+            <strong>Patrimoine</strong>
+            <span>Actifs, valorisation et répartition par catégorie</span>
+          </span>
+          <span class="module-arrow" aria-hidden="true">&#8594;</span>
+        </button>
+        <button class="module-card" type="button" data-module="simulation">
+          <span class="module-icon simulation-icon" aria-hidden="true">&#128200;</span>
+          <span class="module-copy">
+            <strong>Simulation</strong>
+            <span>Rentabilité prévisionnelle d’un achat immobilier</span>
+          </span>
+          <span class="module-arrow" aria-hidden="true">&#8594;</span>
+        </button>
       </div>
     </section>
 
@@ -101,6 +117,14 @@
           <input id="code-input" type="text" inputmode="numeric" pattern="\d{6,14}" placeholder="Saisir le code-barres" required>
           <button class="btn" type="submit">Rechercher</button>
         </form>
+        <div class="search-divider"><span>ou rechercher par nom</span></div>
+        <form id="product-search" class="product-search-form">
+          <label>Nom du produit<input id="search-name" type="search" maxlength="80" placeholder="Ex. chocolat noir" required></label>
+          <label>Marque (facultatif)<input id="search-brand" type="search" maxlength="80" placeholder="Ex. Casino"></label>
+          <button id="search-submit" class="btn" type="submit">Rechercher dans la base</button>
+        </form>
+        <p id="search-msg" class="msg" aria-live="polite"></p>
+        <div id="search-results" class="search-results"></div>
         <button id="manual-entry" class="btn link" type="button">Ajouter un aliment sans code-barres</button>
         <p id="scan-msg" class="msg"></p>
       </div>
@@ -138,6 +162,170 @@
           <button type="button" id="cancel-product" class="btn">Annuler</button>
         </div>
       </form>
+    </section>
+
+    <!-- Module Patrimoine -->
+    <section id="view-patrimoine" class="view">
+      <div class="wealth-intro">
+        <p class="eyebrow">PATRIMOINE</p>
+        <h2>Vue d’ensemble</h2>
+      </div>
+
+      <div class="wealth-overview">
+        <span>Valeur totale estimée</span>
+        <strong id="wealth-total">0,00 €</strong>
+        <small id="wealth-count">0 actif</small>
+      </div>
+
+      <button id="asset-add" class="btn primary add-asset" type="button">+ Ajouter un actif</button>
+      <p id="wealth-msg" class="msg" aria-live="polite"></p>
+
+      <form id="asset-form" class="card asset-form" hidden>
+        <h2 id="asset-form-title">Nouvel actif</h2>
+        <label>Nom de l’actif<input id="asset-name" maxlength="100" placeholder="Ex. Appartement, PEA, Livret A" required></label>
+        <label>Catégorie
+          <select id="asset-category" required>
+            <option value="real_estate">Immobilier</option>
+            <option value="stocks">Bourse</option>
+            <option value="bank">Banque &amp; épargne</option>
+            <option value="crypto">Cryptoactifs</option>
+            <option value="vehicles">Véhicules</option>
+            <option value="valuables">Biens de valeur</option>
+            <option value="other">Autres</option>
+          </select>
+        </label>
+        <label>Valeur actuelle estimée (EUR)<input id="asset-value" type="number" min="0" max="1000000000000" step="0.01" inputmode="decimal" required></label>
+        <label>Notes (facultatif)<textarea id="asset-notes" maxlength="500" rows="3" placeholder="Détails ou référence"></textarea></label>
+        <div class="row">
+          <button id="asset-save" class="btn primary" type="submit">Enregistrer</button>
+          <button id="asset-cancel" class="btn" type="button">Annuler</button>
+        </div>
+      </form>
+
+      <section class="wealth-section">
+        <h2>Répartition</h2>
+        <div id="wealth-categories"></div>
+      </section>
+      <section class="wealth-section">
+        <h2>Mes actifs</h2>
+        <div id="wealth-assets"></div>
+      </section>
+    </section>
+
+    <!-- Module Simulation immobilière -->
+    <section id="view-simulation" class="view">
+      <div class="simulation-intro">
+        <p class="eyebrow">SIMULATION IMMOBILIÈRE</p>
+        <h2>Rentabilité d’un investissement</h2>
+      </div>
+
+      <div class="scenario-toolbar">
+        <label>Scénario enregistré
+          <select id="saved-simulations"><option value="">Nouveau scénario</option></select>
+        </label>
+        <button id="simulation-new" class="btn" type="button">Nouveau</button>
+        <button id="simulation-delete" class="icon-btn" type="button" aria-label="Supprimer le scénario" title="Supprimer le scénario" hidden>&#10005;</button>
+      </div>
+
+      <form id="simulation-form">
+        <div class="card sim-panel">
+          <label>Nom du scénario<input id="sim-name" maxlength="80" value="Mon projet locatif" required></label>
+          <h3>Acquisition</h3>
+          <div class="grid2">
+            <label>Prix du bien (€)<input id="sim-price" type="number" min="1" max="100000000" step="1000" value="200000" required></label>
+            <label>Frais de notaire (%)<input id="sim-notary" type="number" min="0" max="20" step="0.1" value="7.5" required></label>
+            <label>Frais d’agence (%)<input id="sim-agency" type="number" min="0" max="20" step="0.1" value="0" required></label>
+            <label>Travaux (€)<input id="sim-works" type="number" min="0" max="10000000" step="100" value="10000" required></label>
+            <label>Mobilier / équipement (€)<input id="sim-furnishing" type="number" min="0" max="10000000" step="100" value="0" required></label>
+            <label>Autres frais d’acquisition (€)<input id="sim-acquisition-other" type="number" min="0" max="1000000" step="50" value="0" required></label>
+          </div>
+        </div>
+
+        <div class="card sim-panel">
+          <h3>Recettes locatives</h3>
+          <div class="grid2">
+            <label>Loyer mensuel hors charges (€)<input id="sim-rent" type="number" min="0" max="100000" step="10" value="900" required></label>
+            <label>Autres revenus mensuels (€)<input id="sim-income-other" type="number" min="0" max="100000" step="10" value="0" required></label>
+            <label>Vacance locative (%)<input id="sim-vacancy" type="number" min="0" max="100" step="0.5" value="5" required></label>
+            <label>Progression annuelle des loyers (%)<input id="sim-rent-growth" type="number" min="-20" max="30" step="0.1" value="1" required></label>
+          </div>
+        </div>
+
+        <div class="card sim-panel">
+          <h3>Charges annuelles</h3>
+          <div class="grid2">
+            <label>Taxe foncière (€)<input id="sim-property-tax" type="number" min="0" max="1000000" step="50" value="1200" required></label>
+            <label>Copropriété non récupérable (€)<input id="sim-condo" type="number" min="0" max="1000000" step="50" value="1200" required></label>
+            <label>Assurance propriétaire (PNO) (€)<input id="sim-insurance" type="number" min="0" max="100000" step="10" value="180" required></label>
+            <label>Entretien / travaux récurrents (€)<input id="sim-maintenance" type="number" min="0" max="1000000" step="50" value="600" required></label>
+            <label>Gestion locative (% des loyers encaissés)<input id="sim-management" type="number" min="0" max="30" step="0.5" value="0" required></label>
+            <label>Autres charges annuelles (€)<input id="sim-expenses-other" type="number" min="0" max="1000000" step="50" value="0" required></label>
+            <label>Progression annuelle des charges (%)<input id="sim-expense-growth" type="number" min="-10" max="30" step="0.1" value="2" required></label>
+          </div>
+        </div>
+
+        <div class="card sim-panel">
+          <h3>Financement</h3>
+          <div class="grid2">
+            <label>Apport personnel (€)<input id="sim-down" type="number" min="0" max="100000000" step="1000" value="40000" required></label>
+            <label>Taux du crédit (%)<input id="sim-interest" type="number" min="0" max="30" step="0.05" value="3.5" required></label>
+            <label>Durée du crédit (années)<input id="sim-term" type="number" min="1" max="30" step="1" value="20" required></label>
+            <label>Assurance emprunteur (% du capital initial / an)<input id="sim-loan-insurance" type="number" min="0" max="5" step="0.05" value="0.3" required></label>
+          </div>
+        </div>
+
+        <div class="card sim-panel">
+          <h3>Horizon et fiscalité estimée</h3>
+          <div class="grid2">
+            <label>Durée de détention simulée (années)<input id="sim-horizon" type="number" min="1" max="30" step="1" value="10" required></label>
+            <label>Évolution annuelle du prix du bien (%)<input id="sim-property-growth" type="number" min="-20" max="30" step="0.1" value="1.5" required></label>
+            <label>Frais de vente estimés (%)<input id="sim-sale-fees" type="number" min="0" max="20" step="0.1" value="5" required></label>
+            <label>Régime locatif estimé
+              <select id="sim-tax-regime">
+                <option value="real">Régime réel simplifié</option>
+                <option value="micro">Micro-foncier (abattement 30 %)</option>
+                <option value="none">Avant fiscalité</option>
+              </select>
+            </label>
+            <label>Tranche marginale d’imposition (%)<input id="sim-tax-rate" type="number" min="0" max="60" step="1" value="30" required></label>
+            <label>Prélèvements sociaux (%)<input id="sim-social-rate" type="number" min="0" max="30" step="0.1" value="17.2" required></label>
+          </div>
+        </div>
+
+        <div class="simulation-actions">
+          <button class="btn primary" type="submit">Calculer la rentabilité</button>
+          <button id="simulation-save" class="btn" type="button">Enregistrer le scénario</button>
+        </div>
+      </form>
+
+      <p id="simulation-msg" class="msg" aria-live="polite"></p>
+      <section id="simulation-results" hidden>
+        <div id="sim-verdict" class="sim-verdict">
+          <span id="sim-verdict-label"></span>
+          <strong id="sim-verdict-value"></strong>
+          <small id="sim-verdict-detail"></small>
+        </div>
+        <div id="sim-key-metrics" class="sim-metrics"></div>
+
+        <div class="sim-chart-section">
+          <h3>Cash-flow annuel après crédit et fiscalité</h3>
+          <p class="muted">Montant restant chaque année après loyers, charges, crédit et impôts estimés.</p>
+          <div id="sim-cashflow-chart" class="sim-chart-scroll"></div>
+        </div>
+        <div class="sim-chart-section">
+          <h3>Gain net potentiel à la revente</h3>
+          <p class="muted">Valeur nette du bien et cash-flows cumulés, moins l’apport initial.</p>
+          <div id="sim-gain-chart" class="sim-chart-scroll"></div>
+        </div>
+        <div class="sim-chart-section">
+          <h3>Détail année par année</h3>
+          <div id="sim-year-table" class="table-scroll"></div>
+        </div>
+        <details class="sim-assumptions">
+          <summary>Hypothèses et limites du calcul</summary>
+          <p>Estimation indicative : le crédit est supposé financer le coût du projet diminué de l’apport. Le régime réel déduit ici les charges saisies et les intérêts, sans amortissement. Le micro-foncier applique un abattement forfaitaire de 30 % et concerne la location nue sous conditions. Les règles dépendent du type de location et de votre situation. Les impôts sur la plus-value à la revente, frais bancaires non saisis, gros travaux imprévus et évolutions réglementaires ne sont pas inclus. Faites valider le scénario par un professionnel avant toute décision.</p>
+        </details>
+      </section>
     </section>
 
     <!-- Profil -->
@@ -189,12 +377,7 @@
     </section>
   </main>
 
-  <nav class="bottom-nav" hidden>
-    <button data-view="home">&#8962;<span>Modules</span></button>
-    <button data-view="nutriscan" class="active">&#127860;<span>NutriScan</span></button>
-    <button data-view="scan">&#128247;<span>Scanner</span></button>
-    <button data-view="profile">&#128100;<span>Profil</span></button>
-  </nav>
+  <nav class="bottom-nav" aria-label="Navigation principale" hidden></nav>
 
   <script src="app.js"></script>
 </body>
