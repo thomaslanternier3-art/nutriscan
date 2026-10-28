@@ -26,6 +26,7 @@ const PROPERTY_TRANSACTION_LABELS = {
   recovered_charges: 'Charges récupérées / provisions',
   property_tax: 'Taxe foncière',
   coproperty: 'Copropriété non récupérable',
+  coproperty_provisions: 'Provisions de copropriété versées au syndic',
   insurance: 'Assurance propriétaire',
   management: 'Gestion / administration',
   repairs: 'Travaux / réparations',
@@ -39,7 +40,7 @@ const PROPERTY_TRANSACTION_LABELS = {
   other_expense: 'Autre charge à vérifier',
 };
 const PROPERTY_INCOME = new Set(['rent', 'other_income', 'recovered_charges']);
-const PROPERTY_DEDUCTIBLE = new Set(['property_tax', 'coproperty', 'insurance', 'management', 'repairs', 'loan_interest', 'accounting', 'utilities']);
+const PROPERTY_DEDUCTIBLE = new Set(['property_tax', 'coproperty', 'coproperty_provisions', 'insurance', 'management', 'repairs', 'loan_interest', 'accounting', 'utilities']);
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 const compactEuro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', notation: 'compact', maximumFractionDigits: 1 });
 const SIMULATION_FIELDS = [
@@ -693,6 +694,7 @@ function property2044Details(property, items) {
     { line: '223', label: 'Primes d’assurance', categories: ['insurance'], type: 'expense', reason: 'Primes payées pour assurer le bien loué (par exemple assurance propriétaire non occupant). L’assurance emprunteur, si elle est enregistrée ici, doit être examinée avec les frais d’emprunt en ligne 250, sans double déduction.' },
     { line: '224', label: 'Réparation, entretien et amélioration', categories: ['repairs'], type: 'expense', reason: 'Dépenses payées de réparation et d’entretien et, sous conditions, d’amélioration du logement loué. Vérifier les factures : construction, reconstruction et agrandissement ne sont pas déductibles à cette ligne. Les factures et coordonnées des entreprises restent à renseigner dans le détail des travaux de la 2044.' },
     { line: '227', label: 'Impôts déductibles', categories: ['property_tax'], type: 'expense', reason: 'Taxe foncière supportée par le propriétaire. Le montant saisi est proposé sous réserve d’exclure la taxe d’enlèvement des ordures ménagères et les autres taxes récupérables sur le locataire ; contrôler l’avis d’imposition avant report.' },
+    { line: '229', label: 'Provisions de copropriété versées au syndic', categories: ['coproperty_provisions'], type: 'expense', reason: 'Provisions pour charges de copropriété effectivement versées au syndic pendant l’année, retenues à hauteur de votre quote-part. Vérifier les appels de fonds et les paiements ; exclure les appels relatifs à des travaux non déductibles. Ne pas saisir une seconde fois les mêmes dépenses dans une autre catégorie. La régularisation des provisions déduites l’année précédente reste à déterminer séparément en ligne 230 à partir du décompte du syndic.' },
     { line: '250', label: 'Intérêts et frais d’emprunt', categories: ['loan_interest'], type: 'expense', reason: 'Intérêts payés d’un emprunt finançant un bien loué, sous réserve de son affectation et des justificatifs bancaires. Le remboursement du capital est exclu. Compléter aussi les renseignements sur les emprunts demandés par la 2044.' },
     { line: '', label: 'Charges récupérées / provisions locatives', categories: ['recovered_charges'], type: 'income', reason: 'Non ajoutées automatiquement aux loyers : les remboursements de charges normalement dues par le locataire ne sont en principe pas des recettes foncières imposables. Une dépense normalement due par le propriétaire et mise à la charge du locataire peut relever de la ligne 212 ; il faut identifier sa nature.' },
     { line: '', label: 'Copropriété à ventiler', categories: ['coproperty'], type: 'expense', reason: 'La catégorie « Copropriété non récupérable » ne distingue pas les appels de provisions versés au syndic (ligne 229) des charges définitives. Vérifier les appels et le décompte annuel : les provisions et leur régularisation en ligne 230 doivent être traitées ensemble, sans déduire deux fois les mêmes frais.' },
@@ -727,7 +729,7 @@ function renderProperty2044(property, details, year) {
     ${details.groups.filter((group) => group.line).map((group) => `<section class="tax-2044-line"><h3>Ligne ${group.line} · ${group.label} : ${euro.format(group.amount)}</h3><p>${group.reason}</p>${sourceList(group.entries)}</section>`).join('')}
     <h3>Calculs et rapprochement</h3>
     ${taxBoxHTML('215', 'Total des recettes proposées', details.receipts, '211 + 213. Les lignes 212 et 214 restent à examiner ; les charges locatives récupérées ne sont pas ajoutées automatiquement.')}
-    ${taxBoxHTML('240', 'Total provisoire des frais et charges hors intérêts', details.charges, '221 + 223 + 224 + 227 uniquement dans ce rapport. À compléter avec les autres lignes applicables, notamment 229 et la régularisation 230.')}
+    ${taxBoxHTML('240', 'Total provisoire des frais et charges hors intérêts', details.charges, '221 + 223 + 224 + 227 + 229 dans ce rapport. À compléter avec les autres lignes applicables et à corriger de la régularisation 230.')}
     ${taxBoxHTML('250', 'Intérêts et frais d’emprunt enregistrés', details.interest, 'Somme des écritures détaillées en ligne 250 ci-dessus, sans remboursement du capital.')}
     ${taxBoxHTML('Résultat', 'Résultat foncier provisoire de ce bien', details.net, `Recettes 215 (${euro.format(details.receipts)}) − charges 240 (${euro.format(details.charges)}) − intérêts 250 (${euro.format(details.interest)}). Avant régularisations, déductions spécifiques et déficits antérieurs.`)}
     <p>${details.net >= 0 ? 'Report 2042 · 4BA proposé : bénéfice foncier, à agréger avec les autres biens du foyer et à corriger des déficits antérieurs imputables.' : `Report 2042 proposé après agrégation du foyer : 4BC ${euro.format(details.globalDeficit)} et 4BB ${euro.format(details.carriedDeficit)}. Déficit total ${euro.format(details.deficit)} ; part provenant des intérêts = max(0, intérêts − recettes) = ${euro.format(details.interestDeficit)}. La part hors intérêts est plafonnée ici à 10 700 € pour 4BC ; le surplus et la part liée aux intérêts vont en 4BB. Ces montants restent soumis aux conditions de location et aux éventuels plafonds particuliers.`}</p>
@@ -735,7 +737,7 @@ function renderProperty2044(property, details, year) {
     <p>Ces sommes ne sont pas toutes nécessairement non déductibles : certaines exigent une ventilation ou des pièces complémentaires. Aucun montant ne doit être reporté automatiquement à partir de cette section.</p>
     ${details.groups.filter((group) => !group.line && group.entries.length).map((group) => `<section class="tax-2044-line"><h3>${group.label} : ${euro.format(group.amount)}</h3><p>${group.reason}</p>${sourceList(group.entries)}</section>`).join('') || '<p>Aucune écriture isolée.</p>'}
     <h3>Postes non déterminables avec le journal seul</h3>
-    <p>Vérifier notamment : ligne 212 (dépenses du propriétaire mises à la charge du locataire), ligne 214 (valeur locative des biens dont vous vous réservez la jouissance, si applicable), ligne 222 (forfait de gestion de 20 € par local, nombre de locaux à vérifier), ligne 225 (charges récupérables non récupérées au départ du locataire), ligne 226 (indemnités d’éviction et frais de relogement), ligne 228 (déductions spécifiques), ligne 229 (provisions de copropriété) et ligne 230 (régularisation des provisions déduites l’année précédente). Aucun zéro fiscal n’est présumé pour ces postes. Vérifier aussi les régimes spéciaux nécessitant une 2044 spéciale.</p>
+    <p>Vérifier notamment : ligne 212 (dépenses du propriétaire mises à la charge du locataire), ligne 214 (valeur locative des biens dont vous vous réservez la jouissance, si applicable), ligne 222 (forfait de gestion de 20 € par local, nombre de locaux à vérifier), ligne 225 (charges récupérables non récupérées au départ du locataire), ligne 226 (indemnités d’éviction et frais de relogement), ligne 228 (déductions spécifiques) et ligne 230 (régularisation des provisions déduites l’année précédente). Aucun zéro fiscal n’est présumé pour ces postes. La ligne 229 ne reprend que les sommes saisies dans « Provisions de copropriété versées au syndic » : vérifier que tous les versements admissibles sont enregistrés. Vérifier aussi les régimes spéciaux nécessitant une 2044 spéciale.</p>
     </section>`;
 }
 

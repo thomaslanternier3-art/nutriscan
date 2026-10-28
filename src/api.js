@@ -13,7 +13,7 @@ const PROPERTY_TYPES = new Set(['unfurnished', 'furnished_long', 'tourism_classi
 const PROPERTY_REGIMES = new Set(['micro', 'real']);
 const LANDLORD_STATUSES = new Set(['non_professional', 'professional']);
 const PROPERTY_TRANSACTION_CATEGORIES = new Set([
-  'rent', 'other_income', 'recovered_charges', 'property_tax', 'coproperty', 'insurance', 'management', 'repairs',
+  'rent', 'other_income', 'recovered_charges', 'property_tax', 'coproperty', 'coproperty_provisions', 'insurance', 'management', 'repairs',
   'major_works', 'loan_interest', 'accounting', 'cfe', 'acquisition_fees', 'utilities', 'loan_principal', 'other_expense',
 ]);
 const SIMULATION_LIMITS = {
