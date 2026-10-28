@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16a34a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>NutriScan</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <script src="vendor/html5-qrcode.min.js"></script>
+</head>
+<body>
+  <header class="topbar"><h1>NutriScan</h1></header>
+
+  <main>
+    <!-- Connexion -->
+    <section id="view-auth" class="view">
+      <form id="auth-form" class="card">
+        <h2 id="auth-title">Connexion</h2>
+        <label>Email<input id="a-email" type="email" autocomplete="email" maxlength="254" required></label>
+        <label>Mot de passe<input id="a-password" type="password" autocomplete="current-password" minlength="8" maxlength="72" required></label>
+        <button id="auth-submit" class="btn primary" type="submit">Se connecter</button>
+        <button id="auth-toggle" class="btn link" type="button"></button>
+        <p id="auth-msg" class="msg error"></p>
+      </form>
+    </section>
+
+    <!-- Tableau de bord -->
+    <section id="view-dashboard" class="view">
+      <div class="segmented">
+        <button data-mode="day" class="active">Jour</button>
+        <button data-mode="week">Semaine</button>
+      </div>
+
+      <div class="date-nav">
+        <button id="prev-date" class="icon-btn" aria-label="Précédent">&#9664;</button>
+        <span id="date-label"></span>
+        <button id="next-date" class="icon-btn" aria-label="Suivant">&#9654;</button>
+      </div>
+
+      <p id="profile-hint" class="card hint" hidden>
+        Renseignez votre <a href="#" data-goto="profile">profil</a> pour obtenir votre objectif calorique.
+      </p>
+
+      <div id="day-panel">
+        <div class="card summary">
+          <div class="kcal-main"><span id="kcal-consumed">0</span> / <span id="kcal-target">—</span> kcal</div>
+          <div class="progress"><div id="progress-bar"></div></div>
+          <div id="kcal-remaining"></div>
+          <div class="macros">
+            <div><strong id="macro-p">0 g</strong><span>Protéines</span></div>
+            <div><strong id="macro-c">0 g</strong><span>Glucides</span></div>
+            <div><strong id="macro-f">0 g</strong><span>Lipides</span></div>
+          </div>
+        </div>
+        <div id="entries"></div>
+      </div>
+
+      <div id="week-panel" hidden>
+        <div class="card">
+          <div id="week-chart" class="chart"></div>
+        </div>
+        <div id="week-stats" class="card stats"></div>
+      </div>
+    </section>
+
+    <!-- Scanner -->
+    <section id="view-scan" class="view">
+      <div class="card">
+        <div id="reader"></div>
+        <div class="row">
+          <button id="start-scan" class="btn primary">Scanner un code-barres</button>
+          <button id="stop-scan" class="btn" hidden>Arrêter</button>
+        </div>
+        <form id="manual-code" class="row">
+          <input id="code-input" type="text" inputmode="numeric" pattern="\d{6,14}" placeholder="Saisir le code-barres" required>
+          <button class="btn" type="submit">Rechercher</button>
+        </form>
+        <button id="manual-entry" class="btn link" type="button">Ajouter un aliment sans code-barres</button>
+        <p id="scan-msg" class="msg"></p>
+      </div>
+
+      <form id="product-form" class="card" hidden>
+        <div class="product-head">
+          <img id="f-image" alt="" hidden>
+          <div>
+            <label>Nom<input id="f-name" required maxlength="120"></label>
+            <label>Marque<input id="f-brand" maxlength="120"></label>
+          </div>
+        </div>
+        <p class="muted">Valeurs pour 100 g</p>
+        <div class="grid4">
+          <label>kcal<input id="f-kcal" type="number" min="0" step="any" required></label>
+          <label>Prot.<input id="f-p" type="number" min="0" step="any"></label>
+          <label>Gluc.<input id="f-c" type="number" min="0" step="any"></label>
+          <label>Lip.<input id="f-f" type="number" min="0" step="any"></label>
+        </div>
+        <div class="grid3">
+          <label>Quantité (g)<input id="f-qty" type="number" min="1" step="any" required></label>
+          <label>Repas
+            <select id="f-meal">
+              <option value="breakfast">Petit-déjeuner</option>
+              <option value="lunch">Déjeuner</option>
+              <option value="snack">Collation</option>
+              <option value="dinner">Dîner</option>
+            </select>
+          </label>
+          <label>Date<input id="f-date" type="date" required></label>
+        </div>
+        <p class="total">Total : <strong id="f-total">0</strong> kcal</p>
+        <div class="row">
+          <button type="submit" class="btn primary">Ajouter au journal</button>
+          <button type="button" id="cancel-product" class="btn">Annuler</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Profil -->
+    <section id="view-profile" class="view">
+      <form id="profile-form" class="card">
+        <h2>Données corporelles</h2>
+        <div class="grid2">
+          <label>Sexe
+            <select id="p-sex">
+              <option value="female">Femme</option>
+              <option value="male">Homme</option>
+            </select>
+          </label>
+          <label>Âge<input id="p-age" type="number" min="15" max="100" required></label>
+          <label>Taille (cm)<input id="p-height" type="number" min="100" max="250" required></label>
+          <label>Poids (kg)<input id="p-weight" type="number" min="30" max="300" step="0.1" required></label>
+        </div>
+        <label>Niveau d'activité
+          <select id="p-activity">
+            <option value="1.2">Sédentaire (peu ou pas de sport)</option>
+            <option value="1.375">Légèrement actif (1-3 j/sem)</option>
+            <option value="1.55">Modérément actif (3-5 j/sem)</option>
+            <option value="1.725">Très actif (6-7 j/sem)</option>
+            <option value="1.9">Extrêmement actif (travail physique + sport)</option>
+          </select>
+        </label>
+        <label>Rythme du régime
+          <select id="p-deficit">
+            <option value="250">Léger (-250 kcal/j, ~0,25 kg/sem)</option>
+            <option value="500" selected>Modéré (-500 kcal/j, ~0,5 kg/sem)</option>
+            <option value="750">Soutenu (-750 kcal/j, ~0,7 kg/sem)</option>
+          </select>
+        </label>
+        <button class="btn primary" type="submit">Enregistrer</button>
+        <p id="profile-msg" class="msg"></p>
+      </form>
+
+      <div id="profile-results" class="card stats" hidden></div>
+
+      <div class="card">
+        <h2>Historique du poids</h2>
+        <div id="weight-history"></div>
+      </div>
+
+      <div class="card account">
+        <span id="account-email" class="muted"></span>
+        <button id="logout" class="btn" type="button">Se déconnecter</button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" hidden>
+    <button data-view="dashboard" class="active">&#128202;<span>Tableau</span></button>
+    <button data-view="scan">&#128247;<span>Scanner</span></button>
+    <button data-view="profile">&#128100;<span>Profil</span></button>
+  </nav>
+
+  <script src="app.js"></script>
+</body>
+</html>
