@@ -105,6 +105,19 @@ function toPropertyTransactionDto({ _id, userId, propertyId, ...rest }) {
   return { id: _id.toString(), ...rest };
 }
 
+function parsePropertyTransaction(body = {}) {
+  if (!isDate(body.date)) return { error: 'Date du mouvement invalide' };
+  if (!PROPERTY_TRANSACTION_CATEGORIES.has(body.category)) return { error: 'Nature du mouvement invalide' };
+  if (!isNum(body.amount, 0.01, 10_000_000)) return { error: 'Montant invalide' };
+  return { transaction: {
+    date: body.date,
+    category: body.category,
+    type: ['rent', 'other_income', 'recovered_charges'].includes(body.category) ? 'income' : 'expense',
+    amount: body.amount,
+    description: text(body.description, 160),
+  } };
+}
+
 async function findOwnedProperty(req, res) {
   if (!ObjectId.isValid(req.params.id)) {
     res.status(400).json({ error: 'Identifiant de bien invalide' });
@@ -172,22 +185,38 @@ apiRouter.post('/properties/:id/transactions', async (req, res) => {
   const existing = await findOwnedProperty(req, res);
   if (!existing) return;
   const body = req.body ?? {};
-  const category = body.category;
-  if (!isDate(body.date)) return badRequest(res, 'Date du mouvement invalide');
-  if (!PROPERTY_TRANSACTION_CATEGORIES.has(category)) return badRequest(res, 'Nature du mouvement invalide');
-  if (!isNum(body.amount, 0.01, 10_000_000)) return badRequest(res, 'Montant invalide');
+  const parsed = parsePropertyTransaction(body);
+  if (parsed.error) return badRequest(res, parsed.error);
+  if (body.allMonths !== undefined && typeof body.allMonths !== 'boolean') return badRequest(res, 'Période invalide');
   const transaction = {
+    ...parsed.transaction,
     userId: req.userId,
     propertyId: existing._id,
-    date: body.date,
-    category,
-    type: ['rent', 'other_income', 'recovered_charges'].includes(category) ? 'income' : 'expense',
-    amount: body.amount,
-    description: text(body.description, 160),
     createdAt: new Date(),
   };
+  if (body.allMonths) {
+    const transactions = Array.from({ length: 12 }, (_, index) => ({
+      ...transaction,
+      date: `${body.date.slice(0, 4)}-${String(index + 1).padStart(2, '0')}-01`,
+    }));
+    const { insertedIds } = await propertyTransactions().insertMany(transactions);
+    return res.status(201).json(transactions.map((item, index) => toPropertyTransactionDto({ _id: insertedIds[index], ...item })));
+  }
   const { insertedId } = await propertyTransactions().insertOne(transaction);
   res.status(201).json(toPropertyTransactionDto({ _id: insertedId, ...transaction }));
+});
+
+apiRouter.put('/properties/:id/transactions/:transactionId', async (req, res) => {
+  const existing = await findOwnedProperty(req, res);
+  if (!existing) return;
+  if (!ObjectId.isValid(req.params.transactionId)) return badRequest(res, 'Identifiant de mouvement invalide');
+  const parsed = parsePropertyTransaction(req.body ?? {});
+  if (parsed.error) return badRequest(res, parsed.error);
+  const result = await propertyTransactions().updateOne({
+    _id: new ObjectId(req.params.transactionId), propertyId: existing._id, userId: req.userId,
+  }, { $set: { ...parsed.transaction, updatedAt: new Date() } });
+  if (!result.matchedCount) return res.status(404).json({ error: 'Mouvement introuvable' });
+  res.json({ id: req.params.transactionId, ...parsed.transaction });
 });
 
 apiRouter.delete('/properties/:id/transactions/:transactionId', async (req, res) => {

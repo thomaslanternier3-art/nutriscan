@@ -490,6 +490,13 @@ async function openPropertyDetail(id) {
 
   setYearOptions($('#property-chart-year'), chartYear);
   setYearOptions($('#tax-year'), taxYear);
+  setYearOptions($('#transaction-year'), Number($('#transaction-year').value) || currentYear());
+  for (const select of [$('#transaction-list-month'), $('#transaction-month')]) {
+    if (select.options.length) continue;
+    select.innerHTML = Array.from({ length: 12 }, (_, month) => `<option value="${String(month + 1).padStart(2, '0')}">${new Date(2000, month, 1).toLocaleDateString('fr-FR', { month: 'long' })}</option>`).join('');
+    select.value = String(new Date().getMonth() + 1).padStart(2, '0');
+  }
+  $('#transaction-form').hidden = true;
   try {
     state.propertyTransactions = await api(`/properties/${encodeURIComponent(id)}/transactions`);
   } catch (err) {
@@ -547,46 +554,88 @@ $('#tax-year').addEventListener('change', renderPropertyTaxReport);
 function renderPropertyTransactionList() {
   const property = state.properties.find((item) => item.id === state.activePropertyId);
   if (!property) return;
-  $('#property-transactions').innerHTML = state.propertyTransactions.length
-    ? state.propertyTransactions.map((transaction) => {
+  const period = `${$('#transaction-year').value}-${$('#transaction-list-month').value}`;
+  const transactions = state.propertyTransactions.filter((transaction) => transaction.date.slice(0, 7) === period);
+  $('#property-transactions').innerHTML = transactions.length
+    ? transactions.map((transaction) => {
       const signedValue = transaction.type === 'income' ? transaction.amount : -transaction.amount;
       const ownedValue = signedValue * property.ownershipShare / 100;
       return `<div class="transaction-row">
         <div><strong>${PROPERTY_TRANSACTION_LABELS[transaction.category] || 'Mouvement'}</strong>
-          <small>${fromISO(transaction.date).toLocaleDateString('fr-FR')}${transaction.description ? ` · ${esc(transaction.description)}` : ''}</small></div>
+          ${transaction.description ? `<small>${esc(transaction.description)}</small>` : ''}</div>
         <div class="transaction-actions"><strong class="${ownedValue >= 0 ? 'positive-text' : 'negative-text'}">${euro.format(ownedValue)}</strong>
-          <button class="icon-btn" type="button" data-delete-transaction="${esc(transaction.id)}" aria-label="Supprimer le mouvement">&#10005;</button></div>
+          <button class="icon-btn" type="button" data-edit-transaction="${esc(transaction.id)}" aria-label="Modifier le mouvement" title="Modifier ce mois uniquement">&#9998;</button>
+          <button class="icon-btn" type="button" data-delete-transaction="${esc(transaction.id)}" aria-label="Supprimer le mouvement" title="Supprimer ce mois uniquement">&#10005;</button></div>
       </div>`;
     }).join('')
-    : '<p class="muted">Aucun mouvement enregistré pour ce bien.</p>';
+    : '<p class="muted">Aucun mouvement enregistré pour ce mois.</p>';
 }
 
-$('#transaction-add').addEventListener('click', () => {
+for (const select of [$('#transaction-year'), $('#transaction-list-month')]) {
+  select.addEventListener('change', () => {
+    $('#transaction-form').hidden = true;
+    renderPropertyTransactionList();
+  });
+}
+
+function openTransactionForm(transaction = null) {
   const form = $('#transaction-form');
   form.reset();
-  $('#transaction-date').value = toISO(new Date());
+  form.dataset.transactionId = transaction?.id || '';
+  form.dataset.year = $('#transaction-year').value;
+  form.dataset.date = transaction?.date || '';
+  $('#transaction-month').value = transaction?.date.slice(5, 7) || $('#transaction-list-month').value;
+  $('#transaction-month').disabled = Boolean(transaction);
+  $('#transaction-repeat-label').hidden = Boolean(transaction);
+  $('#transaction-repeat').disabled = Boolean(transaction);
+  $('#transaction-form-title').textContent = `${transaction ? 'Modifier le mouvement' : 'Nouveau mouvement'} · ${form.dataset.year}`;
+  if (transaction) {
+    $('#transaction-category').value = transaction.category;
+    $('#transaction-amount').value = transaction.amount;
+    $('#transaction-description').value = transaction.description || '';
+  }
+  $('#transaction-save').textContent = 'Enregistrer';
+  $('#property-msg').textContent = '';
+  $('#property-msg').classList.remove('error');
   form.hidden = false;
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('#transaction-amount').focus({ preventScroll: true });
+}
+
+$('#transaction-add').addEventListener('click', () => openTransactionForm());
+$('#transaction-repeat').addEventListener('change', (e) => {
+  $('#transaction-month').disabled = e.target.checked;
+  $('#transaction-save').textContent = e.target.checked ? 'Enregistrer les 12 mois' : 'Enregistrer';
 });
 
 $('#transaction-cancel').addEventListener('click', () => { $('#transaction-form').hidden = true; });
 
 $('#transaction-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  const form = e.currentTarget;
+  const id = form.dataset.transactionId;
+  const propertyId = state.activePropertyId;
+  const month = $('#transaction-month').value;
+  const allMonths = !id && $('#transaction-repeat').checked;
   const button = $('#transaction-save');
   button.disabled = true;
   try {
-    await api(`/properties/${encodeURIComponent(state.activePropertyId)}/transactions`, {
-      method: 'POST',
+    await api(`/properties/${encodeURIComponent(propertyId)}/transactions${id ? `/${encodeURIComponent(id)}` : ''}`, {
+      method: id ? 'PUT' : 'POST',
       body: {
-        date: $('#transaction-date').value,
+        date: id ? form.dataset.date : `${form.dataset.year}-${month}-01`,
         category: $('#transaction-category').value,
         amount: num($('#transaction-amount').value),
         description: $('#transaction-description').value.trim(),
+        ...(!id ? { allMonths } : {}),
       },
     });
+    if (state.activePropertyId !== propertyId) return;
+    $('#transaction-list-month').value = month;
     $('#transaction-form').hidden = true;
-    await openPropertyDetail(state.activePropertyId);
+    await openPropertyDetail(propertyId);
+    $('#property-msg').textContent = id ? 'Mouvement modifié pour ce mois uniquement.' : allMonths ? 'Mouvement ajouté aux 12 mois.' : 'Mouvement ajouté.';
+    $('#property-msg').classList.remove('error');
   } catch (err) {
     $('#property-msg').textContent = err.message;
     $('#property-msg').classList.add('error');
@@ -596,6 +645,12 @@ $('#transaction-form').addEventListener('submit', async (e) => {
 });
 
 $('#property-transactions').addEventListener('click', async (e) => {
+  const edit = e.target.closest('[data-edit-transaction]');
+  if (edit) {
+    const transaction = state.propertyTransactions.find((item) => item.id === edit.dataset.editTransaction);
+    if (transaction) openTransactionForm(transaction);
+    return;
+  }
   const button = e.target.closest('[data-delete-transaction]');
   if (!button || !confirm('Supprimer ce mouvement ?')) return;
   try {

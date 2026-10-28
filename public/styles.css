@@ -274,6 +274,9 @@ textarea { resize: vertical; font: inherit; }
 .section-heading .muted { margin: 3px 0 0; }
 .transaction-form { margin-top: 10px; }
 .transaction-form h4 { margin: 0 0 10px; }
+.transaction-period { margin-top: 12px; }
+.transaction-repeat { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
+.transaction-repeat input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; }
 .transaction-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .transaction-row > div:first-child { min-width: 0; }
 .transaction-row strong, .transaction-row small { display: block; }

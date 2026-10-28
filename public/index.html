@@ -289,10 +289,14 @@
               <h3>Journal des recettes et dépenses</h3>
               <button id="transaction-add" class="btn primary" type="button">+ Ajouter</button>
             </div>
+            <div class="grid2 transaction-period">
+              <label>Année<select id="transaction-year"></select></label>
+              <label>Mois<select id="transaction-list-month"></select></label>
+            </div>
             <form id="transaction-form" class="card transaction-form" hidden>
               <h4 id="transaction-form-title">Nouveau mouvement</h4>
               <div class="grid2">
-                <label>Date<input id="transaction-date" type="date" required></label>
+                <label>Mois<select id="transaction-month" required></select></label>
                 <label>Nature
                   <select id="transaction-category" required>
                     <option value="rent">Loyer encaissé</option>
@@ -316,6 +320,7 @@
                 <label>Montant (€)<input id="transaction-amount" type="number" min="0.01" max="10000000" step="0.01" required></label>
                 <label>Description<input id="transaction-description" maxlength="160" placeholder="Facultatif"></label>
               </div>
+              <label id="transaction-repeat-label" class="transaction-repeat"><input id="transaction-repeat" type="checkbox"> Appliquer ce montant à chacun des 12 mois</label>
               <div class="row">
                 <button id="transaction-save" class="btn primary" type="submit">Enregistrer</button>
                 <button id="transaction-cancel" class="btn" type="button">Annuler</button>
