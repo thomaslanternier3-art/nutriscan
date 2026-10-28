@@ -294,6 +294,12 @@ textarea { resize: vertical; font: inherit; }
 .tax-breakdown p { margin: 7px 0 0; }
 .tax-warning { margin: 12px 0; padding: 11px; border-left: 3px solid #d97706; background: #fffbeb; font-size: .82rem; line-height: 1.5; }
 .tax-sources { font-size: .8rem; }
+.tax-2044 { margin-top: 20px; font-size: .85rem; line-height: 1.5; overflow-wrap: anywhere; }
+.tax-2044 h2 { font-size: 1.1rem; }
+.tax-2044 h3 { margin: 18px 0 6px; font-size: .92rem; }
+.tax-2044-line { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.tax-evidence { margin: 8px 0; padding-left: 20px; }
+.tax-evidence li { margin: 5px 0; }
 #property-monthly-breakdown table { min-width: 540px; font-size: .78rem; }
 #property-monthly-breakdown th, #property-monthly-breakdown td { padding: 8px; }
 #tax-print-report { display: none; }
@@ -308,6 +314,8 @@ textarea { resize: vertical; font: inherit; }
   #tax-print-report table { width: 100%; border-collapse: collapse; font-size: 8pt; }
   #tax-print-report th, #tax-print-report td { padding: 5px; border: 1px solid #aaa; text-align: left; }
   #tax-print-report a { color: #111; }
+  #tax-print-report h2, #tax-print-report h3 { break-after: avoid; }
+  #tax-print-report .tax-box-row, #tax-print-report .tax-evidence li, #tax-print-report tr { break-inside: avoid; }
 }
 
 /* Simulation immobilière */

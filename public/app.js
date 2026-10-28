@@ -685,6 +685,60 @@ function taxBoxHTML(box, description, amount, hint = '') {
   return `<div class="tax-box-row"><strong>${box}</strong><span>${description}${hint ? `<small>${hint}</small>` : ''}</span><b>${amount == null ? 'À calculer' : euro.format(amount)}</b></div>`;
 }
 
+function property2044Details(property, items) {
+  const rules = [
+    { line: '211', label: 'Loyers encaissés', categories: ['rent'], type: 'income', reason: 'Les loyers effectivement encaissés hors charges locatives constituent les recettes locatives de la ligne 211.' },
+    { line: '213', label: 'Recettes diverses', categories: ['other_income'], type: 'income', reason: 'Les subventions et indemnités imposables peuvent relever de la ligne 213. Affectation proposée sous réserve : la catégorie « Autre recette / indemnité » ne permet pas de vérifier la nature exacte de chaque somme. Un dépôt de garantie non conservé ne constitue pas un loyer.' },
+    { line: '221', label: 'Frais d’administration et de gestion', categories: ['management', 'accounting'], type: 'expense', reason: 'Honoraires de gestion et frais comptables directement liés à la location nue, effectivement payés et justifiés. La catégorie « Comptabilité / frais divers » doit être ventilée si elle contient des frais sans lien avec cette ligne.' },
+    { line: '223', label: 'Primes d’assurance', categories: ['insurance'], type: 'expense', reason: 'Primes payées pour assurer le bien loué (par exemple assurance propriétaire non occupant). L’assurance emprunteur, si elle est enregistrée ici, doit être examinée avec les frais d’emprunt en ligne 250, sans double déduction.' },
+    { line: '224', label: 'Réparation, entretien et amélioration', categories: ['repairs'], type: 'expense', reason: 'Dépenses payées de réparation et d’entretien et, sous conditions, d’amélioration du logement loué. Vérifier les factures : construction, reconstruction et agrandissement ne sont pas déductibles à cette ligne. Les factures et coordonnées des entreprises restent à renseigner dans le détail des travaux de la 2044.' },
+    { line: '227', label: 'Impôts déductibles', categories: ['property_tax'], type: 'expense', reason: 'Taxe foncière supportée par le propriétaire. Le montant saisi est proposé sous réserve d’exclure la taxe d’enlèvement des ordures ménagères et les autres taxes récupérables sur le locataire ; contrôler l’avis d’imposition avant report.' },
+    { line: '250', label: 'Intérêts et frais d’emprunt', categories: ['loan_interest'], type: 'expense', reason: 'Intérêts payés d’un emprunt finançant un bien loué, sous réserve de son affectation et des justificatifs bancaires. Le remboursement du capital est exclu. Compléter aussi les renseignements sur les emprunts demandés par la 2044.' },
+    { line: '', label: 'Charges récupérées / provisions locatives', categories: ['recovered_charges'], type: 'income', reason: 'Non ajoutées automatiquement aux loyers : les remboursements de charges normalement dues par le locataire ne sont en principe pas des recettes foncières imposables. Une dépense normalement due par le propriétaire et mise à la charge du locataire peut relever de la ligne 212 ; il faut identifier sa nature.' },
+    { line: '', label: 'Copropriété à ventiler', categories: ['coproperty'], type: 'expense', reason: 'La catégorie « Copropriété non récupérable » ne distingue pas les appels de provisions versés au syndic (ligne 229) des charges définitives. Vérifier les appels et le décompte annuel : les provisions et leur régularisation en ligne 230 doivent être traitées ensemble, sans déduire deux fois les mêmes frais.' },
+    { line: '', label: 'Gros travaux à vérifier', categories: ['major_works'], type: 'expense', reason: 'Aucune déduction automatique : une amélioration peut relever de la ligne 224, mais construction, reconstruction et agrandissement sont exclus. Ventiler les factures selon la nature réelle des travaux.' },
+    { line: '', label: 'Capital remboursé et frais d’acquisition', categories: ['loan_principal', 'acquisition_fees'], type: 'expense', reason: 'Exclus de cette estimation des charges foncières : le capital remboursé n’est pas une charge déductible et les frais d’acquisition ne sont pas des charges locatives courantes. Distinguer d’éventuels frais de financement admissibles en ligne 250 sur justificatifs.' },
+    { line: '', label: 'Autres dépenses à examiner', categories: ['utilities', 'other_expense', 'cfe'], type: 'expense', reason: 'Aucune affectation automatique : énergie, frais divers et CFE ne sont pas suffisamment qualifiés pour une déduction en location nue. Les charges locatives récupérables ne sont pas déductibles en principe ; certaines charges non récupérées au départ du locataire peuvent relever de la ligne 225, sous conditions.' },
+  ];
+  const share = property.ownershipShare / 100;
+  const groups = rules.map((rule) => {
+    const entries = items.filter((item) => item.type === rule.type && rule.categories.includes(item.category));
+    return { ...rule, entries, amount: entries.reduce((sum, item) => sum + item.amount, 0) * share };
+  });
+  const unclassified = items.filter((item) => !groups.some((group) => group.entries.includes(item)));
+  if (unclassified.length) groups.push({ line: '', label: 'Écritures non classées', entries: unclassified, amount: unclassified.reduce((sum, item) => sum + item.amount, 0) * share, reason: 'Nature non reconnue : vérifier ces écritures avant toute affectation fiscale. Elles ne sont pas intégrées au résultat proposé.' });
+  const receipts = groups.filter((group) => group.line && group.type === 'income').reduce((sum, group) => sum + group.amount, 0);
+  const charges = groups.filter((group) => group.line && group.type === 'expense' && group.line !== '250').reduce((sum, group) => sum + group.amount, 0);
+  const interest = groups.find((group) => group.line === '250').amount;
+  const net = receipts - charges - interest;
+  const deficit = Math.max(0, -net);
+  const interestDeficit = Math.max(0, interest - receipts);
+  const globalDeficit = Math.min(10700, Math.max(0, deficit - interestDeficit));
+  return { groups, receipts, charges, interest, net, deficit, interestDeficit, globalDeficit, carriedDeficit: deficit - globalDeficit };
+}
+
+function renderProperty2044(property, details, year) {
+  const sourceList = (entries) => entries.length
+    ? `<ul class="tax-evidence">${entries.slice().sort((first, second) => first.date.localeCompare(second.date)).map((item) => `<li>${fromISO(item.date).toLocaleDateString('fr-FR')} · ${esc(PROPERTY_TRANSACTION_LABELS[item.category] || item.category)}${item.description ? ` · ${esc(item.description)}` : ''} : ${euro.format(item.amount)} × ${property.ownershipShare} % = <strong>${euro.format(item.amount * property.ownershipShare / 100)}</strong></li>`).join('')}</ul>`
+    : '<p class="muted">Aucune écriture correspondante saisie pour cette année. Vérifier les justificatifs avant de retenir zéro.</p>';
+  return `<section class="tax-2044"><h2>Détail préparatoire du formulaire 2044</h2>
+    <p>Revenus ${year} · ${esc(property.name)} · quote-part ${property.ownershipShare} %. Chaque montant proposé ci-dessous provient des écritures annuelles de ce bien, et non du seul mois affiché dans le journal.</p>
+    <p class="tax-warning">Il ne s’agit pas du formulaire officiel rempli. Repères de lignes : formulaire 2044, millésime 2026 (revenus 2025). Pour les revenus ${year}, vérifier le millésime de la campagne ${year + 1}. Les affectations et totaux sont provisoires : contrôler les factures et compléter les postes manquants avant tout report. Les montants sont présentés au centime ; appliquer les règles d’arrondi de la déclaration après agrégation.</p>
+    ${details.groups.filter((group) => group.line).map((group) => `<section class="tax-2044-line"><h3>Ligne ${group.line} · ${group.label} : ${euro.format(group.amount)}</h3><p>${group.reason}</p>${sourceList(group.entries)}</section>`).join('')}
+    <h3>Calculs et rapprochement</h3>
+    ${taxBoxHTML('215', 'Total des recettes proposées', details.receipts, '211 + 213. Les lignes 212 et 214 restent à examiner ; les charges locatives récupérées ne sont pas ajoutées automatiquement.')}
+    ${taxBoxHTML('240', 'Total provisoire des frais et charges hors intérêts', details.charges, '221 + 223 + 224 + 227 uniquement dans ce rapport. À compléter avec les autres lignes applicables, notamment 229 et la régularisation 230.')}
+    ${taxBoxHTML('250', 'Intérêts et frais d’emprunt enregistrés', details.interest, 'Somme des écritures détaillées en ligne 250 ci-dessus, sans remboursement du capital.')}
+    ${taxBoxHTML('Résultat', 'Résultat foncier provisoire de ce bien', details.net, `Recettes 215 (${euro.format(details.receipts)}) − charges 240 (${euro.format(details.charges)}) − intérêts 250 (${euro.format(details.interest)}). Avant régularisations, déductions spécifiques et déficits antérieurs.`)}
+    <p>${details.net >= 0 ? 'Report 2042 · 4BA proposé : bénéfice foncier, à agréger avec les autres biens du foyer et à corriger des déficits antérieurs imputables.' : `Report 2042 proposé après agrégation du foyer : 4BC ${euro.format(details.globalDeficit)} et 4BB ${euro.format(details.carriedDeficit)}. Déficit total ${euro.format(details.deficit)} ; part provenant des intérêts = max(0, intérêts − recettes) = ${euro.format(details.interestDeficit)}. La part hors intérêts est plafonnée ici à 10 700 € pour 4BC ; le surplus et la part liée aux intérêts vont en 4BB. Ces montants restent soumis aux conditions de location et aux éventuels plafonds particuliers.`}</p>
+    <h3>Montants isolés, non intégrés aux totaux proposés</h3>
+    <p>Ces sommes ne sont pas toutes nécessairement non déductibles : certaines exigent une ventilation ou des pièces complémentaires. Aucun montant ne doit être reporté automatiquement à partir de cette section.</p>
+    ${details.groups.filter((group) => !group.line && group.entries.length).map((group) => `<section class="tax-2044-line"><h3>${group.label} : ${euro.format(group.amount)}</h3><p>${group.reason}</p>${sourceList(group.entries)}</section>`).join('') || '<p>Aucune écriture isolée.</p>'}
+    <h3>Postes non déterminables avec le journal seul</h3>
+    <p>Vérifier notamment : ligne 212 (dépenses du propriétaire mises à la charge du locataire), ligne 214 (valeur locative des biens dont vous vous réservez la jouissance, si applicable), ligne 222 (forfait de gestion de 20 € par local, nombre de locaux à vérifier), ligne 225 (charges récupérables non récupérées au départ du locataire), ligne 226 (indemnités d’éviction et frais de relogement), ligne 228 (déductions spécifiques), ligne 229 (provisions de copropriété) et ligne 230 (régularisation des provisions déduites l’année précédente). Aucun zéro fiscal n’est présumé pour ces postes. Vérifier aussi les régimes spéciaux nécessitant une 2044 spéciale.</p>
+    </section>`;
+}
+
 function renderPropertyTaxReport() {
   const property = state.properties.find((item) => item.id === state.activePropertyId);
   if (!property) return;
@@ -704,21 +758,15 @@ function renderPropertyTaxReport() {
       + taxBoxHTML('Estimation', 'Base après abattement forfaitaire de 30 %', gross * 0.7);
     disclaimer = 'Les charges récupérées sont isolées et ne sont pas ajoutées automatiquement au montant 4BE. Leur traitement dépend de leur nature. Le micro-foncier est soumis à conditions et à un plafond global du foyer fiscal.';
   } else if (property.type === 'unfurnished' && property.taxRegime === 'real') {
-    const net = totals.rents + totals.otherIncome + totals.recoveredCharges - totals.deductible;
+    const details = property2044Details(property, items);
+    const net = details.net;
     if (net >= 0) {
-      rows = taxBoxHTML('2042 · 4BA', 'Revenu foncier net positif estimé (après déclaration 2044)', net);
+      rows = taxBoxHTML('2042 · 4BA', 'Revenu foncier net positif provisoire (après déclaration 2044)', net, 'Avant postes à vérifier, régularisations et déficits antérieurs ; voir le détail 2044.');
     } else {
-      const nonInterestDeficit = Math.max(0, totals.chargesNotInterest - totals.rents - totals.otherIncome - totals.recoveredCharges);
-      const interestDeficit = Math.min(totals.interest, Math.max(0, -net));
-      const globalDeductible = Math.min(10700, nonInterestDeficit);
-      rows = taxBoxHTML('2042 · 4BC', 'Déficit imputable estimatif, plafond général de 10 700 €', globalDeductible)
-        + taxBoxHTML('2042 · 4BB', 'Part estimée reportable sur revenus fonciers futurs', Math.max(0, -net - globalDeductible), 'Inclut la part liée aux intérêts d’emprunt et dépassements de plafond.');
+      rows = taxBoxHTML('2042 · 4BC', 'Déficit imputable provisoire, plafond général de 10 700 €', details.globalDeficit)
+        + taxBoxHTML('2042 · 4BB', 'Part provisoire reportable sur revenus fonciers futurs', details.carriedDeficit, 'Inclut la part liée aux intérêts d’emprunt et les dépassements de plafond. À recalculer au niveau du foyer.');
     }
-    rows += `<div class="tax-breakdown"><strong>À reporter / vérifier sur la déclaration 2044</strong>
-      <p>Loyers et autres recettes : ${euro.format(totals.rents + totals.otherIncome + totals.recoveredCharges)}</p>
-      <p>Charges déductibles enregistrées : ${euro.format(totals.deductible)}</p>
-      <p>Dont intérêts d’emprunt : ${euro.format(totals.interest)}</p>
-      <p>Dépenses exclues du calcul : ${euro.format(totals.excludedExpenses)}</p></div>`;
+    rows += renderProperty2044(property, details, year);
     disclaimer = 'Estimation simplifiée : vérifiez la déductibilité de chaque dépense, les régularisations de copropriété, les déficits antérieurs et les éventuels plafonds majorés pour travaux énergétiques. Le report 4BB dépend aussi de votre historique fiscal.';
   } else if (property.taxRegime === 'micro' && property.landlordStatus === 'non_professional') {
     let box;
@@ -743,7 +791,10 @@ function renderPropertyTaxReport() {
     disclaimer = 'Les recettes et charges ci-dessous sont une synthèse du journal, pas un calcul comptable ou fiscal validé.';
   }
 
-  const sourceLinks = `<p class="tax-sources">Sources officielles : <a href="https://www.impots.gouv.fr/particulier/location-vide-de-meubles" target="_blank" rel="noreferrer">Location vide de meubles</a> · <a href="https://www.impots.gouv.fr/particulier/location-meublee" target="_blank" rel="noreferrer">Location meublée</a>.</p>`;
+  const sourceLinks = `<p class="tax-sources">Sources officielles : <a href="https://www.impots.gouv.fr/formulaire/2044/declaration-des-revenus-fonciers" target="_blank" rel="noreferrer">Formulaire 2044 et notice, choisir le millésime applicable</a> · <a href="https://www.impots.gouv.fr/particulier/location-vide-de-meubles" target="_blank" rel="noreferrer">Location vide de meubles</a> · <a href="https://www.impots.gouv.fr/particulier/location-meublee" target="_blank" rel="noreferrer">Location meublée</a>.</p>`;
+  if (property.type !== 'unfurnished' || property.taxRegime !== 'real') {
+    rows += `<p class="tax-perimeter">Formulaire 2044 non applicable au régime sélectionné : ${property.type === 'unfurnished' ? 'au micro-foncier, les recettes sont déclarées sur la 2042 sans déduction des charges réelles.' : 'la location meublée relève des BIC, et non des revenus fonciers déclarés sur la 2044.'}</p>`;
+  }
   const journalSummary = `<div class="tax-breakdown"><strong>Synthèse saisie · quote-part ${property.ownershipShare} %</strong>
     <p>Recettes totales du journal : ${euro.format(totals.income)}</p>
     <p>Dépenses totales du journal : ${euro.format(items.filter((item) => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0) * totals.share)}</p></div>`;
